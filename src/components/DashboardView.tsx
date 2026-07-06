@@ -252,17 +252,26 @@ function MetaAdsMetrics({ m, campaigns, allMetrics }: { m: Partial<Metrics>; cam
         <div style={{ padding: "0 0 16px 0" }}>
           <p style={S.tableTitle}>Campaigns</p>
           <div style={S.miniTable}>
-            <div style={S.miniTableHead}>
-              {["Campaign", "Spend", "Leads", "CPL", "CTR"].map(h => (
+            <div style={{ ...S.miniTableHead, gridTemplateColumns: "2fr 0.7fr 1fr 1fr 1fr 1fr" }}>
+              {["Campaign", "Status", "Spend", "Leads", "CPL", "CTR"].map(h => (
                 <span key={h} style={S.miniTh}>{h}</span>
               ))}
             </div>
             {campaigns.map(c => {
               const cm = allMetrics.find(x => x.campaign_id === c.id);
               if (!cm) return null;
+              const isActive = c.status === "active";
               return (
-                <div key={c.id} style={S.miniTableRow}>
+                <div key={c.id} style={{ ...S.miniTableRow, gridTemplateColumns: "2fr 0.7fr 1fr 1fr 1fr 1fr" }}>
                   <span style={S.miniTd}>{c.name}</span>
+                  <span style={{
+                    ...S.miniTd,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: isActive ? "#16a34a" : "#a16207",
+                  }}>
+                    {isActive ? "Active" : "Paused"}
+                  </span>
                   <span style={S.miniTd}>{fmtMoney(cm.spend)}</span>
                   <span style={S.miniTd}>{fmt(cm.leads)}</span>
                   <span style={S.miniTd}>{cm.leads > 0 ? fmtMoney(cm.spend / cm.leads) : "—"}</span>
