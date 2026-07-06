@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { computeVoiceStats } from "@/lib/voice/stats";
 
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
@@ -82,6 +83,7 @@ export async function GET(req: NextRequest) {
       conversations: merged,
       next_cursor: loadAll ? null : nextCursor,
       total: merged.length,
+      stats: computeVoiceStats(merged),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

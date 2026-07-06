@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { computeVoiceStats, formatVoiceDuration, resolveVoiceOutcome } from "@/lib/voice/stats";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ interface ConversationDetail extends Conversation {
   transcript: TranscriptTurn[];
 }
 
-type Outcome = "Not Qualified" | "Qualified" | "Meeting Booked" | "Untagged" | "success";
+type Outcome = ReturnType<typeof resolveVoiceOutcome>;
 
 interface Props {
   agentId: string;
@@ -54,9 +55,7 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}m ${String(s).padStart(2, "0")}s`;
+  return formatVoiceDuration(secs);
 }
 
 function formatDateTime(unix: number): string {
@@ -74,11 +73,7 @@ function formatDateTime(unix: number): string {
 const OUTCOME_OPTIONS: Outcome[] = ["Not Qualified", "Qualified", "Meeting Booked", "Untagged"];
 
 function resolveOutcome(c: Conversation): Outcome {
-  if (c.outcome_override) return c.outcome_override as Outcome;
-  const raw = c.analysis?.call_successful ?? c.call_successful ?? "";
-  if (raw === "success") return "Qualified";
-  if (raw === "failure") return "Not Qualified";
-  return "Untagged";
+  return resolveVoiceOutcome(c);
 }
 
 function OutcomeBadge({ outcome }: { outcome: string }) {
@@ -361,12 +356,7 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const totalCalls = conversations.length;
-  const meetingsBooked = conversations.filter((c) => resolveOutcome(c) === "Meeting Booked").length;
-  const qualified = conversations.filter((c) => resolveOutcome(c) === "Qualified").length;
-  const avgDuration = totalCalls > 0
-    ? Math.round(conversations.reduce((s, c) => s + c.call_duration_secs, 0) / totalCalls)
-    : 0;
+  const { totalCalls, meetingsBooked, qualified, avgDurationSecs: avgDuration } = computeVoiceStats(conversations);
 
   // ── Filter ─────────────────────────────────────────────────────────────────
   const filtered = filterOutcome === "All outcomes"

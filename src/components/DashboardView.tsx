@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { computeVoiceStats, formatVoiceDuration, type VoiceStats } from "@/lib/voice/stats";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,42 @@ function aggregate(metricsList: Metrics[], type: ChannelType): Partial<Metrics> 
     case "ai_voice":
       return { calls_made: sum("calls_made"), connect_rate: avg("connect_rate"), meetings_booked: sum("meetings_booked") };
   }
+}
+
+/** Roll up "meetings booked" across enabled channels using each channel's booking metric. */
+function computeTotalMeetings(
+  enabledChannels: Channel[],
+  campaigns: Campaign[],
+  metrics: Metrics[],
+  voiceStats: VoiceStats | null,
+  demoAppointmentCount: number | null,
+): number {
+  let total = 0;
+  let aiSmsScheduled = 0;
+
+  for (const ch of enabledChannels) {
+    const channelCampaignIds = new Set(
+      campaigns.filter(c => c.channel_id === ch.id).map(c => c.id),
+    );
+    const channelMetrics = metrics.filter(m => channelCampaignIds.has(m.campaign_id));
+
+    if (ch.channel_type === "ai_sms") {
+      aiSmsScheduled = channelMetrics.reduce((a, m) => a + m.meetings_scheduled, 0);
+      total += aiSmsScheduled;
+    } else if (ch.channel_type === "ai_voice") {
+      total += voiceStats?.meetingsBooked
+        ?? channelMetrics.reduce((a, m) => a + m.meetings_booked, 0);
+    } else {
+      total += channelMetrics.reduce((a, m) => a + m.meetings_booked, 0);
+    }
+  }
+
+  // Demo-tracker appointments not already captured in AI SMS scheduled count
+  if (demoAppointmentCount !== null && demoAppointmentCount > aiSmsScheduled) {
+    total += demoAppointmentCount - aiSmsScheduled;
+  }
+
+  return total;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -340,12 +377,6 @@ function EmailMetrics({ m, allMetrics }: { m: Partial<Metrics>; allMetrics: Metr
           sub="Active sending domains fully warmed and ready."
         />
       </div>
-      <div style={S.metricsRow4}>
-        <MetricTile label="Open Rate" value={fmtPct(m.open_rate ?? 0)} />
-        <MetricTile label="Reply Rate" value={fmtPct(m.reply_rate ?? 0)} />
-        <MetricTile label="Meetings Booked" value={fmtNum(m.meetings_booked ?? 0)} />
-        <MetricTile label="Sender Reputation" value={health ? `${health.sender_reputation}/100` : "—"} />
-      </div>
       {health && (
         <div style={S.inboxHealth}>
           <p style={S.tableTitle}>Inbox Health</p>
@@ -378,13 +409,13 @@ function SmsMetrics({ m, label }: { m: Partial<Metrics>; label: string }) {
   );
 }
 
-function VoiceMetrics({ m, autoCallCount }: { m: Partial<Metrics>; autoCallCount: number | null }) {
-  const calls = autoCallCount !== null ? autoCallCount : (m.calls_made ?? 0);
+function VoiceMetrics({ stats }: { stats: VoiceStats }) {
   return (
-    <div style={S.metricsRow}>
-      <MetricTile label="Calls Made" value={fmt(calls)} sub={autoCallCount !== null ? "from ElevenLabs" : undefined} />
-      <MetricTile label="Connect Rate" value={fmtPct(m.connect_rate ?? 0)} />
-      <MetricTile label="Meetings Booked" value={fmt(m.meetings_booked ?? 0)} />
+    <div style={S.metricsRow4}>
+      <MetricTile label="Calls" value={fmtNum(stats.totalCalls)} sub="from ElevenLabs" />
+      <MetricTile label="Meetings Booked" value={fmtNum(stats.meetingsBooked)} color="#2563eb" />
+      <MetricTile label="Qualified" value={fmtNum(stats.qualified)} color="#16a34a" />
+      <MetricTile label="Avg Duration" value={formatVoiceDuration(stats.avgDurationSecs)} />
     </div>
   );
 }
@@ -528,13 +559,13 @@ function AddCampaignModal({ channelType, orgId, channelId, onClose, onCreated }:
 
 // ── Channel Section ────────────────────────────────────────────────────────────
 
-function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVoiceCalls, onToggle, onCampaignAdded, onMetricsSaved, onCampaignDeleted }: {
+function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceStats, onToggle, onCampaignAdded, onMetricsSaved, onCampaignDeleted }: {
   channel: Channel;
   campaigns: Campaign[];
   allMetrics: Metrics[];
   isAdmin: boolean;
   orgId: string;
-  autoVoiceCalls: number | null;
+  voiceStats: VoiceStats | null;
   onToggle: (enabled: boolean) => void;
   onCampaignAdded: (c: Campaign) => void;
   onMetricsSaved: (m: Metrics) => void;
@@ -639,8 +670,8 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
           />
         )}
 
-        {/* Empty state */}
-        {campaigns.length === 0 && (
+        {/* Empty state — voice agent always shows live stats */}
+        {campaigns.length === 0 && channel.channel_type !== "ai_voice" && (
           <div style={{ padding: "28px 22px", textAlign: "center" }}>
             <p style={{ fontSize: 13.5, color: "#9ca3af", fontWeight: 500 }}>
               {isAdmin ? "No campaigns yet — click \u201c+ Campaign\u201d to start tracking metrics." : "No data yet for this channel."}
@@ -649,25 +680,35 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
         )}
 
         {/* Metrics */}
-        {campaigns.length > 0 && (
+        {(campaigns.length > 0 || (channel.channel_type === "ai_voice" && voiceStats)) && (
           <div style={{ padding: "16px 22px 0" }}>
-            {channel.channel_type === "linkedin" && (
+            {channel.channel_type === "linkedin" && campaigns.length > 0 && (
               <LinkedInMetrics m={agg} campaigns={displayedCampaigns} paused={anyPaused} />
             )}
-            {channel.channel_type === "meta_ads" && (
+            {channel.channel_type === "meta_ads" && campaigns.length > 0 && (
               <MetaAdsMetrics m={agg} />
             )}
-            {channel.channel_type === "email" && (
+            {channel.channel_type === "email" && campaigns.length > 0 && (
               <EmailMetrics m={agg} allMetrics={displayedMetrics} />
             )}
-            {channel.channel_type === "sms" && (
+            {channel.channel_type === "sms" && campaigns.length > 0 && (
               <SmsMetrics m={agg} label="SMS" />
             )}
-            {channel.channel_type === "ai_sms" && (
+            {channel.channel_type === "ai_sms" && campaigns.length > 0 && (
               <AiSmsMetrics m={agg} />
             )}
-            {channel.channel_type === "ai_voice" && (
-              <VoiceMetrics m={agg} autoCallCount={autoVoiceCalls} />
+            {channel.channel_type === "ai_voice" && voiceStats && (
+              <>
+                <p style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 500, margin: "0 0 12px" }}>
+                  Live stats from your ElevenLabs voice agent — synced with the Voice Agent tab.
+                </p>
+                <VoiceMetrics stats={voiceStats} />
+              </>
+            )}
+            {channel.channel_type === "ai_voice" && !voiceStats && (
+              <div style={{ padding: "12px 0 20px", textAlign: "center", color: "#9ca3af", fontSize: 13.5 }}>
+                Loading voice agent stats…
+              </div>
             )}
           </div>
         )}
@@ -706,36 +747,44 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [metrics, setMetrics] = useState<Metrics[]>([]);
-  const [autoVoiceCalls, setAutoVoiceCalls] = useState<number | null>(null);
+  const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null);
+  const [demoAppointmentCount, setDemoAppointmentCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const sb = createClient();
-    const [{ data: chData }, { data: cpData }, { data: mData }] = await Promise.all([
+    const [{ data: chData }, { data: cpData }, { data: mData }, { count: demoCount }] = await Promise.all([
       sb.from("gtm_channels").select("*").eq("org_id", orgId),
       sb.from("gtm_campaigns").select("*").eq("org_id", orgId).order("created_at"),
       sb.from("gtm_campaign_metrics").select("*").eq("org_id", orgId),
+      sb.from("crm_contacts")
+        .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("record_type", "demo")
+        .neq("demo_status", "Need to Update"),
     ]);
     setChannels((chData ?? []) as Channel[]);
     setCampaigns((cpData ?? []) as Campaign[]);
     setMetrics((mData ?? []) as Metrics[]);
+    setDemoAppointmentCount(demoCount ?? 0);
     setLoading(false);
   }, [orgId]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-fetch voice call count from ElevenLabs via our API
+  // Auto-fetch voice stats from ElevenLabs via our API (same data as Voice Agent tab)
   useEffect(() => {
     if (!orgId) return;
     const sb = createClient();
     sb.from("org_voice_agents").select("agent_id").eq("org_id", orgId).maybeSingle().then(({ data }) => {
       if (!data?.agent_id) return;
-      fetch(`/api/voice-calls?agentId=${data.agent_id}&pageSize=100`)
+      fetch(`/api/voice-calls?agentId=${data.agent_id}`)
         .then(r => r.json())
         .then(json => {
-          const count = json?.conversations?.length ?? json?.total_count ?? null;
-          if (count !== null) setAutoVoiceCalls(count);
+          if (json?.conversations) {
+            setVoiceStats(computeVoiceStats(json.conversations));
+          }
         })
         .catch(() => {});
     });
@@ -777,10 +826,10 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
     });
   }
 
-  // Hero totals: sum across all enabled channels
   const enabledChannels = channels.filter(c => c.enabled);
-  const totalMeetings = metrics.reduce((a, m) => a + m.meetings_booked, 0)
-    + (autoVoiceCalls !== null ? 0 : 0); // voice meetings_booked already in metrics
+  const totalMeetings = computeTotalMeetings(
+    enabledChannels, campaigns, metrics, voiceStats, demoAppointmentCount,
+  );
   const totalLeads = metrics.reduce((a, m) => a + m.leads + m.connections_made + m.sent + m.sends + m.calls_made, 0);
   const totalCampaigns = campaigns.length;
   const enabledCount = enabledChannels.length;
@@ -833,7 +882,7 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
             allMetrics={channelMetrics}
             isAdmin={isAdmin}
             orgId={orgId}
-            autoVoiceCalls={type === "ai_voice" ? autoVoiceCalls : null}
+            voiceStats={type === "ai_voice" ? voiceStats : null}
             onToggle={enabled => handleToggle(channel.id, enabled)}
             onCampaignAdded={handleCampaignAdded}
             onMetricsSaved={handleMetricsSaved}
