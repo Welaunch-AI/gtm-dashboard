@@ -148,8 +148,9 @@ function computeTotalMeetings(
   voiceStats: VoiceStats | null,
   demoAppointmentCount: number | null,
 ): number {
-  let total = 0;
+  let otherChannelBookings = 0;
   let aiSmsScheduled = 0;
+  let voiceMeetings = 0;
 
   for (const ch of enabledChannels) {
     const channelCampaignIds = new Set(
@@ -158,22 +159,21 @@ function computeTotalMeetings(
     const channelMetrics = metrics.filter(m => channelCampaignIds.has(m.campaign_id));
 
     if (ch.channel_type === "ai_sms") {
-      aiSmsScheduled = channelMetrics.reduce((a, m) => a + m.meetings_scheduled, 0);
-      total += aiSmsScheduled;
+      aiSmsScheduled += channelMetrics.reduce((a, m) => a + m.meetings_scheduled, 0);
     } else if (ch.channel_type === "ai_voice") {
-      total += voiceStats?.meetingsBooked
+      voiceMeetings += voiceStats?.meetingsBooked
         ?? channelMetrics.reduce((a, m) => a + m.meetings_booked, 0);
     } else {
-      total += channelMetrics.reduce((a, m) => a + m.meetings_booked, 0);
+      otherChannelBookings += channelMetrics.reduce((a, m) => a + m.meetings_booked, 0);
     }
   }
 
-  // Demo-tracker appointments not already captured in AI SMS scheduled count
-  if (demoAppointmentCount !== null && demoAppointmentCount > aiSmsScheduled) {
-    total += demoAppointmentCount - aiSmsScheduled;
+  // Demo tracker appointments (excl. "Need to Update") plus bookings from other channels
+  if (demoAppointmentCount !== null && demoAppointmentCount > 0) {
+    return demoAppointmentCount + otherChannelBookings + voiceMeetings;
   }
 
-  return total;
+  return aiSmsScheduled + otherChannelBookings + voiceMeetings;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -760,7 +760,7 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
       sb.from("gtm_campaigns").select("*").eq("org_id", orgId).order("created_at"),
       sb.from("gtm_campaign_metrics").select("*").eq("org_id", orgId),
       sb.from("crm_contacts")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("org_id", orgId)
         .eq("record_type", "demo")
         .or("demo_status.is.null,demo_status.neq.Need to Update"),
@@ -856,7 +856,7 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
       {/* Hero stats */}
       <div style={S.heroRow}>
         {[
-          { label: "Meetings Booked", value: fmt(totalMeetings), note: `Across ${enabledCount} active channels` },
+          { label: "Meetings Booked", value: fmtNum(totalMeetings), note: `Across ${enabledCount} active channels` },
           { label: "Campaigns Running", value: String(totalCampaigns), note: "Total across all channels" },
           { label: "Active Channels", value: String(enabledCount), note: "Currently enabled" },
         ].map(s => (
