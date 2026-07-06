@@ -56,6 +56,7 @@ interface Metrics {
   meetings_rescheduled: number;
   pending_update: number;
   future_calls_scheduled: number;
+  domains_warmed: number;
 }
 
 const ZERO_METRICS: Omit<Metrics, "id" | "campaign_id"> = {
@@ -68,6 +69,7 @@ const ZERO_METRICS: Omit<Metrics, "id" | "campaign_id"> = {
   total_leads_contacted: 0, responded: 0, not_responded: 0, do_not_disturb: 0,
   meetings_scheduled: 0, meetings_completed: 0, no_shows: 0,
   meetings_rescheduled: 0, pending_update: 0, future_calls_scheduled: 0,
+  domains_warmed: 0,
 };
 
 // ── Channel config ─────────────────────────────────────────────────────────────
@@ -111,8 +113,11 @@ function aggregate(metricsList: Metrics[], type: ChannelType): Partial<Metrics> 
     }
     case "email":
       return {
-        sends: sum("sends"), open_rate: avg("open_rate"),
-        reply_rate: avg("reply_rate"), meetings_booked: sum("meetings_booked"),
+        sends: sum("sends"),
+        domains_warmed: sum("domains_warmed"),
+        open_rate: avg("open_rate"),
+        reply_rate: avg("reply_rate"),
+        meetings_booked: sum("meetings_booked"),
       };
     case "sms":
     case "ai_sms":
@@ -239,65 +244,107 @@ function AiSmsMetrics({ m }: { m: Partial<Metrics> }) {
   );
 }
 
-function MetaAdsMetrics({ m, campaigns, allMetrics }: { m: Partial<Metrics>; campaigns: Campaign[]; allMetrics: Metrics[] }) {
+function CampaignToggleStrip({ campaigns, enabledIds, onToggle, isAdmin, onEdit, onDelete, deletingId }: {
+  campaigns: Campaign[];
+  enabledIds: Set<string>;
+  onToggle: (id: string, on: boolean) => void;
+  isAdmin: boolean;
+  onEdit: (c: Campaign) => void;
+  onDelete: (c: Campaign) => void;
+  deletingId: string | null;
+}) {
+  if (campaigns.length === 0) return null;
   return (
-    <>
-      <div style={S.metricsRow}>
-        <MetricTile label="Total Spend" value={fmtMoney(m.spend ?? 0)} />
-        <MetricTile label="Leads" value={fmt(m.leads ?? 0)} />
-        <MetricTile label="Cost per Lead" value={m.cost_per_lead ? fmtMoney(m.cost_per_lead) : "—"} />
-        <MetricTile label="CTR" value={fmtPct(m.ctr ?? 0)} />
-      </div>
-      {campaigns.length > 1 && (
-        <div style={{ padding: "0 0 16px 0" }}>
-          <p style={S.tableTitle}>Campaigns</p>
-          <div style={S.miniTable}>
-            <div style={{ ...S.miniTableHead, gridTemplateColumns: "2fr 0.7fr 1fr 1fr 1fr 1fr" }}>
-              {["Campaign", "Status", "Spend", "Leads", "CPL", "CTR"].map(h => (
-                <span key={h} style={S.miniTh}>{h}</span>
-              ))}
-            </div>
-            {campaigns.map(c => {
-              const cm = allMetrics.find(x => x.campaign_id === c.id);
-              if (!cm) return null;
-              const isActive = c.status === "active";
-              return (
-                <div key={c.id} style={{ ...S.miniTableRow, gridTemplateColumns: "2fr 0.7fr 1fr 1fr 1fr 1fr" }}>
-                  <span style={S.miniTd}>{c.name}</span>
-                  <span style={{
-                    ...S.miniTd,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: isActive ? "#16a34a" : "#a16207",
-                  }}>
-                    {isActive ? "Active" : "Paused"}
-                  </span>
-                  <span style={S.miniTd}>{fmtMoney(cm.spend)}</span>
-                  <span style={S.miniTd}>{fmt(cm.leads)}</span>
-                  <span style={S.miniTd}>{cm.leads > 0 ? fmtMoney(cm.spend / cm.leads) : "—"}</span>
-                  <span style={S.miniTd}>{fmtPct(cm.ctr)}</span>
-                </div>
-              );
-            })}
+    <div style={{ padding: "12px 22px", borderBottom: "1px solid #f3f4f6", display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {campaigns.map(c => {
+        const included = enabledIds.has(c.id);
+        return (
+          <div
+            key={c.id}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "6px 10px", borderRadius: 8,
+              border: `1px solid ${included ? "#d1d5db" : "#e5e7eb"}`,
+              background: included ? "#ffffff" : "#f9fafb",
+              opacity: included ? 1 : 0.55,
+              boxShadow: included ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+            }}
+          >
+            <Toggle checked={included} onChange={v => onToggle(c.id, v)} />
+            <span style={{
+              fontSize: 12.5, fontWeight: included ? 600 : 500, color: "#374151",
+              maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }} title={c.name}>{c.name}</span>
+            {isAdmin && (
+              <>
+                <button onClick={() => onEdit(c)} style={S.rowIconBtn} title="Edit metrics"><EditIcon /></button>
+                <button
+                  onClick={() => onDelete(c)}
+                  disabled={deletingId === c.id}
+                  style={{ ...S.rowIconBtn, color: "#dc2626" }}
+                  title="Delete"
+                >
+                  <TrashIcon />
+                </button>
+              </>
+            )}
           </div>
-        </div>
-      )}
-    </>
+        );
+      })}
+    </div>
   );
 }
 
-function EmailMetrics({ m, campaigns, allMetrics, selectedCampaignId }: { m: Partial<Metrics>; campaigns: Campaign[]; allMetrics: Metrics[]; selectedCampaignId: string | null }) {
-  const health = selectedCampaignId
-    ? allMetrics.find(x => x.campaign_id === selectedCampaignId)
-    : allMetrics[0];
+function MetaAdsMetrics({ m }: { m: Partial<Metrics> }) {
+  return (
+    <div style={S.metricsRow4}>
+      <MetricTile label="Total Spend" value={fmtMoney(m.spend ?? 0)} />
+      <MetricTile label="Leads" value={fmt(m.leads ?? 0)} />
+      <MetricTile label="Cost per Lead" value={m.cost_per_lead ? fmtMoney(m.cost_per_lead) : "—"} />
+      <MetricTile label="CTR" value={fmtPct(m.ctr ?? 0)} />
+    </div>
+  );
+}
+
+function EmailHeroCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div style={S.emailHeroCard}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <p style={S.emailHeroLabel}>{label}</p>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
+        </svg>
+      </div>
+      <p style={S.emailHeroValue}>{value}</p>
+      <p style={S.emailHeroSub}>{sub}</p>
+    </div>
+  );
+}
+
+function EmailMetrics({ m, allMetrics }: { m: Partial<Metrics>; allMetrics: Metrics[] }) {
+  const health = allMetrics[0];
+  const totalSends = m.sends ?? 0;
+  const domainsWarmed = m.domains_warmed ?? 0;
 
   return (
     <>
-      <div style={S.metricsRow}>
-        <MetricTile label="Emails Sent" value={fmt(m.sends ?? 0)} />
+      <div style={S.emailHeroRow}>
+        <EmailHeroCard
+          label="Total Emails Sent"
+          value={fmtNum(totalSends)}
+          sub="Cumulative send volume across active proxy domains."
+        />
+        <EmailHeroCard
+          label="Domains Warmed Up"
+          value={String(domainsWarmed)}
+          sub="Active sending domains fully warmed and ready."
+        />
+      </div>
+      <div style={S.metricsRow4}>
         <MetricTile label="Open Rate" value={fmtPct(m.open_rate ?? 0)} />
         <MetricTile label="Reply Rate" value={fmtPct(m.reply_rate ?? 0)} />
-        <MetricTile label="Meetings Booked" value={fmt(m.meetings_booked ?? 0)} />
+        <MetricTile label="Meetings Booked" value={fmtNum(m.meetings_booked ?? 0)} />
+        <MetricTile label="Sender Reputation" value={health ? `${health.sender_reputation}/100` : "—"} />
       </div>
       {health && (
         <div style={S.inboxHealth}>
@@ -305,12 +352,6 @@ function EmailMetrics({ m, campaigns, allMetrics, selectedCampaignId }: { m: Par
           <div style={{ display: "flex", gap: 12 }}>
             <HealthChip ok={health.warmup_done} label="Warmup" />
             <HealthChip ok={health.domain_healthy} label="Domain" />
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 20, background: "#f9fafb", border: "1px solid #e5e7eb" }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Reputation</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: health.sender_reputation >= 70 ? "#16a34a" : health.sender_reputation >= 40 ? "#d97706" : "#dc2626" }}>
-                {health.sender_reputation}/100
-              </span>
-            </div>
           </div>
         </div>
       )}
@@ -409,7 +450,7 @@ function EditMetricsModal({ campaign, channelType, metrics, orgId, onClose, onSa
       <NumField label="Meetings Booked" fkey="meetings_booked" />
     </>,
     meta_ads: <><NumField label="Spend ($)" fkey="spend" step="0.01" /><NumField label="Leads" fkey="leads" /><NumField label="CTR (%)" fkey="ctr" step="0.01" /></>,
-    email: <><NumField label="Emails Sent" fkey="sends" /><NumField label="Open Rate (%)" fkey="open_rate" step="0.01" /><NumField label="Reply Rate (%)" fkey="reply_rate" step="0.01" /><NumField label="Meetings Booked" fkey="meetings_booked" /><BoolField label="Warmup Done" fkey="warmup_done" /><BoolField label="Domain Healthy" fkey="domain_healthy" /><NumField label="Sender Reputation (0–100)" fkey="sender_reputation" /></>,
+    email: <><NumField label="Emails Sent" fkey="sends" /><NumField label="Domains Warmed Up" fkey="domains_warmed" /><NumField label="Open Rate (%)" fkey="open_rate" step="0.01" /><NumField label="Reply Rate (%)" fkey="reply_rate" step="0.01" /><NumField label="Meetings Booked" fkey="meetings_booked" /><BoolField label="Warmup Done" fkey="warmup_done" /><BoolField label="Domain Healthy" fkey="domain_healthy" /><NumField label="Sender Reputation (0–100)" fkey="sender_reputation" /></>,
     sms: <><NumField label="SMS Sent" fkey="sent" /><NumField label="Replies" fkey="replies" /><NumField label="Meetings Booked" fkey="meetings_booked" /></>,
     ai_sms: <>
       <NumField label="Total Leads Contacted" fkey="total_leads_contacted" />
@@ -499,16 +540,20 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
   onMetricsSaved: (m: Metrics) => void;
   onCampaignDeleted: (id: string) => void;
 }) {
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [enabledCampaignIds, setEnabledCampaignIds] = useState<Set<string>>(() => new Set());
   const [showAddCampaign, setShowAddCampaign] = useState(false);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const cfg = CHANNEL_CONFIG[channel.channel_type];
 
-  const displayedCampaigns = selectedCampaignId
-    ? campaigns.filter(c => c.id === selectedCampaignId)
-    : campaigns;
+  useEffect(() => {
+    setEnabledCampaignIds(new Set(campaigns.map(c => c.id)));
+  }, [campaigns]);
+
+  const displayedCampaigns = channel.channel_type === "email"
+    ? campaigns
+    : campaigns.filter(c => enabledCampaignIds.has(c.id));
 
   const displayedMetrics = displayedCampaigns
     .map(c => allMetrics.find(m => m.campaign_id === c.id))
@@ -517,22 +562,29 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
   const agg = aggregate(displayedMetrics, channel.channel_type);
   const anyPaused = displayedCampaigns.some(c => c.status === "paused");
 
-  const activeCampaign: Campaign | null =
-    selectedCampaignId
-      ? (campaigns.find(c => c.id === selectedCampaignId) ?? null)
-      : campaigns.length === 1 ? campaigns[0] : null;
-
   const metricsForEdit = editCampaign ? allMetrics.find(m => m.campaign_id === editCampaign.id) ?? null : null;
 
-  async function handleDeleteCampaign() {
-    if (!activeCampaign) return;
-    if (!confirm(`Delete campaign "${activeCampaign.name}"? This will also remove all its metrics.`)) return;
-    setDeleting(true);
+  function toggleCampaign(id: string, on: boolean) {
+    setEnabledCampaignIds(prev => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleDeleteCampaign(campaign: Campaign) {
+    if (!confirm(`Delete campaign "${campaign.name}"? This will also remove all its metrics.`)) return;
+    setDeletingId(campaign.id);
     const sb = createClient();
-    await sb.from("gtm_campaigns").delete().eq("id", activeCampaign.id);
-    setDeleting(false);
-    setSelectedCampaignId(null);
-    onCampaignDeleted(activeCampaign.id);
+    await sb.from("gtm_campaigns").delete().eq("id", campaign.id);
+    setDeletingId(null);
+    setEnabledCampaignIds(prev => {
+      const next = new Set(prev);
+      next.delete(campaign.id);
+      return next;
+    });
+    onCampaignDeleted(campaign.id);
   }
 
   if (!channel.enabled && !isAdmin) return null;
@@ -549,33 +601,20 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
             {!channel.enabled && isAdmin && <span style={{ fontSize: 11, color: "#9ca3af", background: "#f3f4f6", padding: "2px 7px", borderRadius: 20, fontWeight: 600 }}>Disabled</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
-            {/* Campaign selector */}
-            {campaigns.length > 0 && (
-              <select
-                value={selectedCampaignId ?? ""}
-                onChange={e => setSelectedCampaignId(e.target.value || null)}
-                style={S.campaignSelect}
-              >
-                <option value="">All campaigns</option>
-                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            )}
-            {/* Admin controls */}
             {isAdmin && (
               <>
                 <button onClick={() => setShowAddCampaign(true)} style={S.outlineSmBtn}>+ Campaign</button>
-                {activeCampaign && (
+                {campaigns.length === 1 && (
                   <>
-                    <button onClick={() => setEditCampaign(activeCampaign)} style={S.outlineSmBtn}>
+                    <button onClick={() => setEditCampaign(campaigns[0])} style={S.outlineSmBtn}>
                       <EditIcon /> Edit metrics
                     </button>
                     <button
-                      onClick={handleDeleteCampaign}
-                      disabled={deleting}
+                      onClick={() => handleDeleteCampaign(campaigns[0])}
+                      disabled={deletingId === campaigns[0].id}
                       style={{ ...S.outlineSmBtn, color: "#dc2626", borderColor: "#fecaca" }}
-                      title={`Delete "${activeCampaign.name}"`}
                     >
-                      <TrashIcon /> {deleting ? "Deleting…" : "Delete"}
+                      <TrashIcon /> {deletingId === campaigns[0].id ? "Deleting…" : "Delete"}
                     </button>
                   </>
                 )}
@@ -587,6 +626,18 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
             )}
           </div>
         </div>
+
+        {campaigns.length > 1 && channel.channel_type !== "email" && (
+          <CampaignToggleStrip
+            campaigns={campaigns}
+            enabledIds={enabledCampaignIds}
+            onToggle={toggleCampaign}
+            isAdmin={isAdmin}
+            onEdit={setEditCampaign}
+            onDelete={handleDeleteCampaign}
+            deletingId={deletingId}
+          />
+        )}
 
         {/* Empty state */}
         {campaigns.length === 0 && (
@@ -604,10 +655,10 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
               <LinkedInMetrics m={agg} campaigns={displayedCampaigns} paused={anyPaused} />
             )}
             {channel.channel_type === "meta_ads" && (
-              <MetaAdsMetrics m={agg} campaigns={displayedCampaigns} allMetrics={displayedMetrics} />
+              <MetaAdsMetrics m={agg} />
             )}
             {channel.channel_type === "email" && (
-              <EmailMetrics m={agg} campaigns={displayedCampaigns} allMetrics={displayedMetrics} selectedCampaignId={selectedCampaignId} />
+              <EmailMetrics m={agg} allMetrics={displayedMetrics} />
             )}
             {channel.channel_type === "sms" && (
               <SmsMetrics m={agg} label="SMS" />
@@ -630,7 +681,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
           orgId={orgId}
           channelId={channel.id}
           onClose={() => setShowAddCampaign(false)}
-          onCreated={c => { onCampaignAdded(c); setSelectedCampaignId(c.id); }}
+          onCreated={c => { onCampaignAdded(c); setEnabledCampaignIds(prev => new Set([...prev, c.id])); }}
         />
       )}
       {editCampaign && (
@@ -820,6 +871,12 @@ const S: Record<string, React.CSSProperties> = {
   campaignSelect: { padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#fff", fontSize: 12.5, color: "#374151", cursor: "pointer", outline: "none", fontWeight: 500 },
   outlineSmBtn: { display: "flex", alignItems: "center", gap: 4, padding: "5px 11px", borderRadius: 7, border: "1px solid #e5e7eb", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" as const },
   metricsRow: { display: "flex", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
+  metricsRow4: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
+  emailHeroRow: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, marginBottom: 16 },
+  emailHeroCard: { background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", borderRadius: 14, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, boxShadow: "0 4px 20px rgba(15,23,42,0.15)" },
+  emailHeroLabel: { fontSize: 10.5, color: "rgba(148,163,184,0.9)", textTransform: "uppercase" as const, letterSpacing: "0.7px", fontWeight: 700, margin: 0 },
+  emailHeroValue: { fontSize: 36, fontWeight: 800, color: "#ffffff", letterSpacing: "-1px", margin: 0, lineHeight: 1 },
+  emailHeroSub: { fontSize: 12.5, color: "rgba(148,163,184,0.85)", margin: 0, lineHeight: 1.45 },
   metricTile: { background: "#ffffff", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 5, minHeight: 88 },
   metricLabel: { fontSize: 10, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.5px", fontWeight: 700, lineHeight: 1.35 },
   metricValue: { fontSize: 26, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.8px" },
@@ -830,6 +887,7 @@ const S: Record<string, React.CSSProperties> = {
   miniTh: { fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.4px" },
   miniTableRow: { display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "9px 14px", borderBottom: "1px solid #f3f4f6" },
   miniTd: { fontSize: 13, color: "#374151" },
+  rowIconBtn: { width: 28, height: 28, borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", padding: 0 },
   inboxHealth: { marginBottom: 16 },
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, animation: "fadeIn 0.15s ease" },
   modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)" },

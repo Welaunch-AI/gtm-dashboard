@@ -441,6 +441,7 @@ export type Database = {
           total_leads_contacted: number; responded: number; not_responded: number; do_not_disturb: number
           meetings_scheduled: number; meetings_completed: number; no_shows: number
           meetings_rescheduled: number; pending_update: number; future_calls_scheduled: number
+          domains_warmed: number
           updated_at: string
         }
         Insert: {
@@ -454,6 +455,7 @@ export type Database = {
           total_leads_contacted?: number; responded?: number; not_responded?: number; do_not_disturb?: number
           meetings_scheduled?: number; meetings_completed?: number; no_shows?: number
           meetings_rescheduled?: number; pending_update?: number; future_calls_scheduled?: number
+          domains_warmed?: number
           updated_at?: string
         }
         Update: {
@@ -467,6 +469,7 @@ export type Database = {
           total_leads_contacted?: number; responded?: number; not_responded?: number; do_not_disturb?: number
           meetings_scheduled?: number; meetings_completed?: number; no_shows?: number
           meetings_rescheduled?: number; pending_update?: number; future_calls_scheduled?: number
+          domains_warmed?: number
           updated_at?: string
         }
         Relationships: []
