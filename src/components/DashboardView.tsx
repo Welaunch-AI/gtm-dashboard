@@ -211,7 +211,7 @@ function LinkedInMetrics({ m, campaigns, paused }: { m: Partial<Metrics>; campai
           )}
         </div>
       )}
-      <div style={S.metricsGrid}>
+      <div className="metrics-grid-5">
         <MetricTile label="Connections Sent" value={fmtNum(m.connections_sent ?? 0)} />
         <MetricTile label="InMails Sent" value={fmtNum(m.inmails_sent ?? 0)} />
         <MetricTile label="Connections Accepted" value={fmtNum(m.connections_accepted ?? 0)} color="#2563eb" />
@@ -224,7 +224,7 @@ function LinkedInMetrics({ m, campaigns, paused }: { m: Partial<Metrics>; campai
 
 function AiSmsMetrics({ m }: { m: Partial<Metrics> }) {
   return (
-    <div style={S.metricsGrid}>
+    <div className="metrics-grid-5">
       <MetricTile label="Total Leads Contacted" value={fmtNum(m.total_leads_contacted ?? 0)} />
       <MetricTile label="Responded" value={fmtNum(m.responded ?? 0)} color="#16a34a" />
       <MetricTile label="Not Responded" value={fmtNum(m.not_responded ?? 0)} />
@@ -811,9 +811,8 @@ const S: Record<string, React.CSSProperties> = {
   campaignSelect: { padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#fff", fontSize: 12.5, color: "#374151", cursor: "pointer", outline: "none", fontWeight: 500 },
   outlineSmBtn: { display: "flex", alignItems: "center", gap: 4, padding: "5px 11px", borderRadius: 7, border: "1px solid #e5e7eb", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" as const },
   metricsRow: { display: "flex", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
-  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
-  metricTile: { flex: 1, background: "#ffffff", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 5 },
-  metricLabel: { fontSize: 10.5, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.6px", fontWeight: 700 },
+  metricTile: { background: "#ffffff", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 5, minHeight: 88 },
+  metricLabel: { fontSize: 10, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.5px", fontWeight: 700, lineHeight: 1.35 },
   metricValue: { fontSize: 26, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.8px" },
   metricSub: { fontSize: 11, color: "#94a3b8", fontWeight: 500 },
   tableTitle: { fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.6px", marginBottom: 8 },
