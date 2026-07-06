@@ -763,7 +763,7 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
         .select("*", { count: "exact", head: true })
         .eq("org_id", orgId)
         .eq("record_type", "demo")
-        .neq("demo_status", "Need to Update"),
+        .or("demo_status.is.null,demo_status.neq.Need to Update"),
     ]);
     setChannels((chData ?? []) as Channel[]);
     setCampaigns((cpData ?? []) as Campaign[]);
