@@ -1,40 +1,55 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
+*, *::before, *::after {
   box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Sidebar */
+  --sidebar-bg: #0b0d17;
+  --sidebar-width: 220px;
+  --sidebar-item-hover: rgba(255,255,255,0.06);
+  --sidebar-item-active-bg: rgba(99,102,241,0.15);
+  --sidebar-item-active-border: #6366f1;
+  --sidebar-text: rgba(255,255,255,0.55);
+  --sidebar-text-active: #ffffff;
+  --sidebar-section-label: rgba(255,255,255,0.28);
+
+  /* Topbar */
+  --topbar-bg: #ffffff;
+  --topbar-border: #e5e7eb;
+  --topbar-height: 60px;
+
+  /* Main canvas */
+  --canvas-bg: #f3f4f8;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --card-radius: 12px;
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+
+  /* Brand */
+  --accent: #6366f1;
+  --accent-dark: #4f46e5;
+  --accent-light: rgba(99,102,241,0.12);
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+
+  /* Status */
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.1);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.1);
+
+  /* Typography */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html, body {
+  height: 100%;
 }
 
 a {
@@ -42,8 +57,10 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+button {
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
 }
