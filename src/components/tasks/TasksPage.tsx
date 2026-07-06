@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/logActivity";
+import { EMPTY_VALUE, formatDateEST, formatDateESTShort } from "@/lib/datetime";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -235,7 +236,7 @@ function TaskDetailModal({ task, authorName, onClose, onUpdated, onDeleted }: { 
     onClose();
   }
 
-  const fmt = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const fmt = (d: string) => formatDateEST(d);
 
   return (
     <Modal onClose={onClose} width={640}>
@@ -251,7 +252,7 @@ function TaskDetailModal({ task, authorName, onClose, onUpdated, onDeleted }: { 
         <div style={S.twoCol}>
           <div style={S.fieldGroup}>
             <span style={S.fieldLabel}>Owner</span>
-            <input value={owner} onChange={e => setOwner(e.target.value)} onBlur={() => save({ owner_name: owner || null })} style={S.input} placeholder="—" />
+            <input value={owner} onChange={e => setOwner(e.target.value)} onBlur={() => save({ owner_name: owner || null })} style={S.input} placeholder={EMPTY_VALUE} />
           </div>
           <Select label="Section" value={section} options={SECTIONS} onChange={v => { setSection(v); save({ section: v }); }} />
         </div>
@@ -422,7 +423,7 @@ export default function TasksPage({ orgId, authorName, userId, userRole, orgName
 
   const owners = ["All owners", ...Array.from(new Set(tasks.map(t => t.owner_name).filter(Boolean))) as string[]];
 
-  const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).replace(",", "") : "—";
+  const fmt = (d: string | null) => d ? formatDateESTShort(d) : EMPTY_VALUE;
 
   return (
     <div style={S.pageWrap}>
@@ -486,7 +487,7 @@ export default function TasksPage({ orgId, authorName, userId, userRole, orgName
                     </td>
                     <td style={S.td}><Badge text={t.status} colorMap={STATUS_COLORS} /></td>
                     <td style={S.td}><Badge text={t.priority} colorMap={PRIORITY_COLORS} /></td>
-                    <td style={S.td}><span style={{ fontSize: 13, color: "#374151" }}>{t.owner_name ?? "—"}</span></td>
+                    <td style={S.td}><span style={{ fontSize: 13, color: "#374151" }}>{t.owner_name ?? EMPTY_VALUE}</span></td>
                     <td style={S.td}><span style={{ fontSize: 13, color: "#374151" }}>{fmt(t.due_date)}</span></td>
                   </tr>
                 ))}

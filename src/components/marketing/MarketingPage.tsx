@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  addDaysYmd,
+  formatShortDateEST,
+  formatTimeEST,
+  formatWeekdayDateEST,
+  getZonedDateParts,
+  startOfWeekYmdEST,
+  todayYmdEST,
+} from "@/lib/datetime";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,7 +84,7 @@ function getFirstDayOfMonth(year: number, month: number) {
   return d === 0 ? 6 : d - 1; // Mon-based
 }
 function fmtDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  return formatWeekdayDateEST(d);
 }
 function fmtTime(t: string | null) {
   if (!t) return "";
@@ -132,7 +141,7 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
       const isVideo = file.type.startsWith("video/");
       const maxBytes = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
       if (file.size > maxBytes) {
-        setError(`"${file.name}" exceeds ${isVideo ? "10 MB video" : "5 MB image"} limit — skipped.`);
+        setError(`"${file.name}" exceeds ${isVideo ? "10 MB video" : "5 MB image"} limit, skipped.`);
         continue;
       }
       const path = `posts/${postId}/${Date.now()}_${file.name}`;
@@ -347,7 +356,7 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
             <div key={fb.id} style={S.feedbackItem}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{fb.author}</span>
-                <span style={{ fontSize: 11.5, color: "#9ca3af" }}>{new Date(fb.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, {fmtTime(new Date(fb.created_at).toTimeString().slice(0,5))}</span>
+                <span style={{ fontSize: 11.5, color: "#9ca3af" }}>{formatShortDateEST(fb.created_at)}, {formatTimeEST(fb.created_at)}</span>
               </div>
               <p style={{ fontSize: 13, color: "#374151" }}>{fb.content}</p>
             </div>
@@ -557,8 +566,7 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const todayStr = todayYmdEST();
   const firstDay = getFirstDayOfMonth(year, month);
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
@@ -621,29 +629,26 @@ function WeekGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+  const todayStr = todayYmdEST();
+  const weekStart = startOfWeekYmdEST();
 
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startOfWeek);
-    d.setDate(startOfWeek.getDate() + i);
+    const dateStr = addDaysYmd(weekStart, i);
     return {
-      dateStr: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`,
+      dateStr,
       label: DAY_NAMES[i],
-      dayNum: d.getDate(),
+      dayNum: Number(dateStr.split("-")[2]),
     };
   });
 
   const postsByDate: Record<string, CalPost[]> = {};
   posts.forEach(p => { (postsByDate[p.scheduled_date] ??= []).push(p); });
-  const todayStr = days.find(() => true)?.dateStr ?? "";
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
       {days.map(({ dateStr, label, dayNum }) => {
         const dayPosts = postsByDate[dateStr] ?? [];
-        const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+        const isToday = dateStr === todayStr;
         return (
           <div key={dateStr} style={{ borderRight: "1px solid #f3f4f6", minHeight: 200, padding: 8, background: "#fff", cursor: isAdmin ? "pointer" : "default" }}
             onClick={() => isAdmin && onDayClick(dateStr)}>
@@ -665,7 +670,6 @@ function WeekGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           </div>
         );
       })}
-      {todayStr && null /* suppress unused warning */}
     </div>
   );
 }
@@ -675,14 +679,14 @@ function WeekGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
 type Props = { orgId: string | null; isAdmin: boolean; authorName: string };
 
 export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  const estToday = getZonedDateParts();
+  const [year, setYear] = useState(estToday.year);
+  const [month, setMonth] = useState(estToday.month);
   const [view, setView] = useState<"month" | "week">("month");
   const [posts, setPosts] = useState<CalPost[]>([]);
   const [filterPlatform, setFilterPlatform] = useState<Platform | "all">("all");
   const [showNew, setShowNew] = useState(false);
-  const [newDate, setNewDate] = useState(today.toISOString().slice(0, 10));
+  const [newDate, setNewDate] = useState(todayYmdEST());
   const [selectedPost, setSelectedPost] = useState<CalPost | null>(null);
 
   const load = useCallback(async () => {
@@ -728,9 +732,9 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
             <span style={{ fontSize: 14, fontWeight: 600, color: "#111827", minWidth: 120, textAlign: "center" }}>{MONTH_NAMES[month]} {year}</span>
             <button onClick={nextMonth} style={S.navBtn}>›</button>
           </div>
-          <button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }} style={S.outlineBtn}>Today</button>
+          <button onClick={() => { const t = getZonedDateParts(); setYear(t.year); setMonth(t.month); }} style={S.outlineBtn}>Today</button>
           {isAdmin && (
-            <button onClick={() => { setNewDate(today.toISOString().slice(0, 10)); setShowNew(true); }} style={S.primaryBtn}>
+            <button onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }} style={S.primaryBtn}>
               <PlusIcon /> New post
             </button>
           )}

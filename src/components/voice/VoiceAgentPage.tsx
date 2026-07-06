@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { computeVoiceStats, formatVoiceDuration, resolveVoiceOutcome } from "@/lib/voice/stats";
+import { formatDateTimeEST, formatShortDateEST } from "@/lib/datetime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,15 +60,7 @@ function formatDuration(secs: number): string {
 }
 
 function formatDateTime(unix: number): string {
-  const d = new Date(unix * 1000);
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return formatDateTimeEST(unix);
 }
 
 const OUTCOME_OPTIONS: Outcome[] = ["Not Qualified", "Qualified", "Meeting Booked", "Untagged"];
@@ -126,7 +119,7 @@ function getCallTitle(c: Conversation): string {
     if (val && val.length > 2) return val;
   }
 
-  // Build "Topic — CallerName" from known DCR fields
+  // Build "Topic - CallerName" from known DCR fields
   const nameVal = (
     dcr["name"]?.value ?? dcr["caller_name"]?.value ??
     dcr["first_name"]?.value ?? dcr["full_name"]?.value
@@ -154,7 +147,7 @@ function getCallTitle(c: Conversation): string {
     const title = words.slice(0, 8).join(" ") + (words.length > 8 ? "…" : "");
 
     if (title.length > 4) {
-      return nameVal ? `${title} — ${nameVal}` : title;
+      return nameVal ? `${title} - ${nameVal}` : title;
     }
   }
 
@@ -164,7 +157,7 @@ function getCallTitle(c: Conversation): string {
   if (phone) return `Call from ${phone}`;
 
   const d = new Date(c.start_time_unix_secs * 1000);
-  return `Call on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  return `Call on ${formatShortDateEST(d)}`;
 }
 
 // ─── Inline expanded row ──────────────────────────────────────────────────────

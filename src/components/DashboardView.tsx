@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { computeVoiceStats, formatVoiceDuration, type VoiceStats } from "@/lib/voice/stats";
+import { EMPTY_VALUE } from "@/lib/datetime";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ function LinkedInMetrics({ m, campaigns, paused }: { m: Partial<Metrics>; campai
     <>
       {(subtitle || paused) && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
-          {subtitle && <p style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 500, margin: 0 }}>{subtitle}{paused ? " — campaigns currently paused." : ""}</p>}
+          {subtitle && <p style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 500, margin: 0 }}>{subtitle}{paused ? ", campaigns currently paused." : ""}</p>}
           {paused && (
             <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: "#fef9c3", color: "#a16207", border: "1px solid #fde047", flexShrink: 0 }}>
               ⏸ Paused
@@ -337,7 +338,7 @@ function MetaAdsMetrics({ m }: { m: Partial<Metrics> }) {
     <div style={S.metricsRow4}>
       <MetricTile label="Total Spend" value={fmtMoney(m.spend ?? 0)} />
       <MetricTile label="Leads" value={fmt(m.leads ?? 0)} />
-      <MetricTile label="Cost per Lead" value={m.cost_per_lead ? fmtMoney(m.cost_per_lead) : "—"} />
+      <MetricTile label="Cost per Lead" value={m.cost_per_lead ? fmtMoney(m.cost_per_lead) : EMPTY_VALUE} />
       <MetricTile label="CTR" value={fmtPct(m.ctr ?? 0)} />
     </div>
   );
@@ -501,7 +502,7 @@ function EditMetricsModal({ campaign, channelType, metrics, orgId, onClose, onSa
   return (
     <Modal onClose={onClose} width={460}>
       <div style={S.modalHeader}>
-        <h2 style={S.modalTitle}>Edit metrics — {campaign.name}</h2>
+        <h2 style={S.modalTitle}>Edit metrics: {campaign.name}</h2>
         <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
       </div>
       <div style={{ ...S.modalBody, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -539,7 +540,7 @@ function AddCampaignModal({ channelType, orgId, channelId, onClose, onCreated }:
   return (
     <Modal onClose={onClose} width={400}>
       <div style={S.modalHeader}>
-        <h2 style={S.modalTitle}>Add campaign — {CHANNEL_CONFIG[channelType].label}</h2>
+        <h2 style={S.modalTitle}>Add campaign: {CHANNEL_CONFIG[channelType].label}</h2>
         <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
       </div>
       <div style={S.modalBody}>
@@ -674,7 +675,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
         {campaigns.length === 0 && channel.channel_type !== "ai_voice" && (
           <div style={{ padding: "28px 22px", textAlign: "center" }}>
             <p style={{ fontSize: 13.5, color: "#9ca3af", fontWeight: 500 }}>
-              {isAdmin ? "No campaigns yet — click \u201c+ Campaign\u201d to start tracking metrics." : "No data yet for this channel."}
+              {isAdmin ? "No campaigns yet. Click \"+ Campaign\" to start tracking metrics." : "No data yet for this channel."}
             </p>
           </div>
         )}
@@ -700,7 +701,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
             {channel.channel_type === "ai_voice" && voiceStats && (
               <>
                 <p style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 500, margin: "0 0 12px" }}>
-                  Live stats from your ElevenLabs voice agent — synced with the Voice Agent tab.
+                  Live stats from your ElevenLabs voice agent, synced with the Voice Agent tab.
                 </p>
                 <VoiceMetrics stats={voiceStats} />
               </>
@@ -848,7 +849,7 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
       <div style={S.pageHeader}>
         <div>
           <h1 style={S.pageTitle}>Reporting Dashboard</h1>
-          <p style={S.pageSubtitle}>{orgName ? `${orgName} — ` : ""}A clear view of what&apos;s been delivered across all active channels.</p>
+          <p style={S.pageSubtitle}>{orgName ? `${orgName}: ` : ""}A clear view of what&apos;s been delivered across all active channels.</p>
         </div>
       </div>
 

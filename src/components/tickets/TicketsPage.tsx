@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/logActivity";
+import { formatDateEST, formatDateTimeEST } from "@/lib/datetime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,10 +71,10 @@ function Badge({ label, scheme }: { label: string; scheme: { bg: string; color: 
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatDateEST(iso);
 }
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  return formatDateTimeEST(iso);
 }
 
 // ─── New Ticket Modal ─────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ function NewTicketModal({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Provide more detail — steps to reproduce, screenshots, etc."
+              placeholder="Provide more detail: steps to reproduce, screenshots, etc."
               rows={4}
               style={{ ...inputStyle, resize: "vertical" }}
             />
@@ -471,7 +472,7 @@ export default function TicketsPage({ orgId, isAdmin, userName, userRole, userId
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827", margin: 0 }}>Tickets</h1>
           <p style={{ fontSize: 14, color: "#6b7280", marginTop: 4, marginBottom: 0 }}>
-            Raise issues, requests, and questions — everything tracked in one place.
+            Raise issues, requests, and questions. Everything tracked in one place.
           </p>
         </div>
         <button onClick={() => setShowNew(true)} style={{ ...confirmBtn, display: "flex", gap: 6, alignItems: "center" }}>

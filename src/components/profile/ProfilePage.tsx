@@ -482,7 +482,7 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
   return (
     <>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
-      <Section title="Client accounts" subtitle="Send a magic invite link — the client sets their own password, no email or password to hand over.">
+      <Section title="Client accounts" subtitle="Send a magic invite link. The client sets their own password, no email or password to hand over.">
         {/* Toolbar */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
           <select
@@ -511,7 +511,7 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
               <>
                 <p style={{ fontSize: 13, fontWeight: 700, color: "#111827", margin: 0 }}>Invite a new user</p>
                 <p style={{ fontSize: 12, color: "#9ca3af", margin: "-6px 0 0" }}>
-                  We&apos;ll pre-fill their name and email — they just pick a password.
+                  We&apos;ll pre-fill their name and email. They just pick a password.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px" }}>
                   <div>
@@ -540,7 +540,7 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
                       <option value="">No workspace</option>
                       {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                     </select>
-                    {form.role === "admin" && <p style={{ fontSize: 11, color: "#9ca3af", margin: "5px 0 0" }}>Admins see every workspace — no assignment needed.</p>}
+                    {form.role === "admin" && <p style={{ fontSize: 11, color: "#9ca3af", margin: "5px 0 0" }}>Admins see every workspace. No assignment needed.</p>}
                   </div>
                 </div>
                 {createError && <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>{createError}</p>}

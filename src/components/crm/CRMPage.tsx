@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/logActivity";
+import { EMPTY_VALUE, formatDateEST, formatDateTimeEST } from "@/lib/datetime";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -126,16 +127,16 @@ function getDefaultCols(mode: CRMMode): ColDef[] {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  if (!iso) return EMPTY_VALUE;
+  return formatDateEST(iso);
 }
 function fmtDateTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  if (!iso) return EMPTY_VALUE;
+  return formatDateTimeEST(iso);
 }
 
 function StatusBadge({ value }: { value: string | null }) {
-  if (!value) return <span style={{ color: "#9ca3af", fontSize: 13 }}>—</span>;
+  if (!value) return <span style={{ color: "#9ca3af", fontSize: 13 }}>{EMPTY_VALUE}</span>;
   const c = STATUS_COLORS[value] ?? { bg: "#f3f4f6", color: "#6b7280" };
   return (
     <span style={{
@@ -146,7 +147,7 @@ function StatusBadge({ value }: { value: string | null }) {
 }
 
 function TagChips({ tags }: { tags: string[] | null }) {
-  if (!tags || tags.length === 0) return <span style={{ color: "#9ca3af", fontSize: 13 }}>—</span>;
+  if (!tags || tags.length === 0) return <span style={{ color: "#9ca3af", fontSize: 13 }}>{EMPTY_VALUE}</span>;
   return (
     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
       {tags.slice(0, 3).map((t) => (
@@ -170,10 +171,10 @@ function cellValue(contact: Contact, col: ColDef): React.ReactNode {
   if (col.key === "scheduled_label") return <span style={{ fontSize: 13, whiteSpace: "pre-line" }}>{contact.scheduled_label || fmtDateTime(contact.scheduled_at)}</span>;
   if (col.key === "comments" || col.key === "remarks" || col.key === "ai_memory" || col.key === "campaign") {
     const text = String(val ?? "");
-    if (!text) return <span style={{ color: "#d1d5db", fontSize: 13 }}>—</span>;
+    if (!text) return <span style={{ color: "#d1d5db", fontSize: 13 }}>{EMPTY_VALUE}</span>;
     return <span style={{ fontSize: 13, color: "#374151" }} title={text}>{text.length > 80 ? text.slice(0, 80) + "…" : text}</span>;
   }
-  if (!val) return <span style={{ color: "#d1d5db", fontSize: 13 }}>—</span>;
+  if (!val) return <span style={{ color: "#d1d5db", fontSize: 13 }}>{EMPTY_VALUE}</span>;
   return <span style={{ fontSize: 13, color: "#374151" }}>{String(val)}</span>;
 }
 
@@ -331,13 +332,13 @@ function ContactModal({
                     onChange={(e) => set("scheduled_label", e.target.value)}
                     rows={2}
                     style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
-                    placeholder="Sunday, June 7 — 9-9.30pm (EDT)"
+                    placeholder="Sunday, June 7, 9-9.30pm (EST)"
                   />
                 </Field>
                 <Field label="Campaign"><Inp value={form.campaign} onChange={(v) => set("campaign", v)} placeholder="AI SMS Campaign" /></Field>
                 <Field label="Status">
                   <select value={form.demo_status} onChange={(e) => set("demo_status", e.target.value)} style={Sel}>
-                    <option value="">—</option>
+                    <option value="">{EMPTY_VALUE}</option>
                     {DEMO_CALL_STATUSES.map((s) => <option key={s}>{s}</option>)}
                   </select>
                 </Field>
@@ -466,7 +467,7 @@ function ContactDetail({
             <div style={{ flex: 1 }}>
               <h2 style={{ ...MdTt, marginBottom: 4 }}>{contact.company || contact.contact_name || "Unknown"}</h2>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color }}>{contact.status ?? "—"}</span>
+                <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color }}>{contact.status ?? EMPTY_VALUE}</span>
                 {contact.contact_name && <span style={{ fontSize: 13, color: "#6b7280" }}>{contact.contact_name}</span>}
                 {contact.email && <span style={{ fontSize: 13, color: "#2563eb" }}>{contact.email}</span>}
               </div>
@@ -497,7 +498,7 @@ function ContactDetail({
               ] as [string, string | null][]).map(([label, val]) => (
                 <div key={label}>
                   <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{label}</p>
-                  <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>{val || "—"}</p>
+                  <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>{val || EMPTY_VALUE}</p>
                 </div>
               ))}
             </div>
@@ -718,7 +719,7 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
                       onChange={(e) => setMapping((p) => ({ ...p, [f.key]: e.target.value }))}
                       style={{ ...Sel, flex: 1 }}
                     >
-                      <option value="">— skip —</option>
+                      <option value="">- skip -</option>
                       {headers.map((h) => <option key={h}>{h}</option>)}
                     </select>
                   </div>
@@ -840,7 +841,7 @@ function BoardView({ contacts, mode, onSelect }: {
                 onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)")}
                 onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "")}
               >
-                <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", margin: "0 0 2px" }}>{c.company || "—"}</p>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", margin: "0 0 2px" }}>{c.company || EMPTY_VALUE}</p>
                 {c.contact_name && <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 4px" }}>{c.contact_name}</p>}
                 {c.email && <p style={{ fontSize: 12, color: "#2563eb", margin: "0 0 4px" }}>{c.email}</p>}
                 {c.tags && c.tags.length > 0 && <TagChips tags={c.tags} />}

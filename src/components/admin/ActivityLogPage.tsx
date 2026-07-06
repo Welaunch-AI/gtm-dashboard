@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatDateTimeEST } from "@/lib/datetime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,11 +58,7 @@ function getEventConfig(type: string) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  });
+  return formatDateTimeEST(iso);
 }
 
 function timeAgo(iso: string) {

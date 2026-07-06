@@ -307,7 +307,7 @@ export default function MarketingDumpPage({ userName, userRole }: Props) {
         fontSize: 13, color: "#92400e",
       }}>
         <LockIcon />
-        Internal only — clients never see anything in this folder.
+        Internal only. Clients never see anything in this folder.
       </div>
 
       {/* Drop zone */}
@@ -326,7 +326,7 @@ export default function MarketingDumpPage({ userName, userRole }: Props) {
       >
         <div style={{ color: "#9ca3af", marginBottom: 8 }}><UploadIcon /></div>
         <p style={{ fontSize: 14, color: "#374151", margin: "0 0 4px", fontWeight: 500 }}>Drop anything here</p>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>No structure required — organize later.</p>
+        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>No structure required. Organize later.</p>
       </div>
 
       {/* Upload progress */}

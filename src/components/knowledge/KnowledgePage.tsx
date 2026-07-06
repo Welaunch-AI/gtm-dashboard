@@ -312,7 +312,7 @@ function FolderDetail({ folder, orgId, isAdmin, canEdit, onBack, onFolderRenamed
             {uploading ? "Uploading…" : "Drop files here to upload"}
           </p>
           <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
-            Images (JPG, PNG, GIF), PDFs, Word docs (.doc/.docx), HTML files — or paste a Google Docs / Sheets link
+            Images (JPG, PNG, GIF), PDFs, Word docs (.doc/.docx), HTML files, or paste a Google Docs / Sheets link
           </p>
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <button onClick={() => fileInputRef.current?.click()} style={S.outlineBtn} disabled={uploading}>
