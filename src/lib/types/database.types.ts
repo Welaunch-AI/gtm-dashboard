@@ -55,6 +55,8 @@ export type Database = {
           status: string | null; lead_source: string | null; tags: string[] | null
           industry: string | null; deal_size: string | null
           scheduled_at: string | null; demo_status: string | null; remarks: string | null
+          campaign: string | null; call_taken_by: string | null; comments: string | null
+          ai_memory: string | null; scheduled_label: string | null
           last_activity_at: string | null; created_by: string | null; created_at: string; updated_at: string
         }
         Insert: {
@@ -63,6 +65,8 @@ export type Database = {
           status?: string | null; lead_source?: string | null; tags?: string[] | null
           industry?: string | null; deal_size?: string | null
           scheduled_at?: string | null; demo_status?: string | null; remarks?: string | null
+          campaign?: string | null; call_taken_by?: string | null; comments?: string | null
+          ai_memory?: string | null; scheduled_label?: string | null
           last_activity_at?: string | null; created_by?: string | null; created_at?: string; updated_at?: string
         }
         Update: {
@@ -71,6 +75,8 @@ export type Database = {
           status?: string | null; lead_source?: string | null; tags?: string[] | null
           industry?: string | null; deal_size?: string | null
           scheduled_at?: string | null; demo_status?: string | null; remarks?: string | null
+          campaign?: string | null; call_taken_by?: string | null; comments?: string | null
+          ai_memory?: string | null; scheduled_label?: string | null
           last_activity_at?: string | null; created_by?: string | null; created_at?: string; updated_at?: string
         }
         Relationships: []

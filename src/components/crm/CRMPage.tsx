@@ -9,6 +9,7 @@ import { logActivity } from "@/lib/logActivity";
 export type CRMMode = "demo" | "contacts";
 
 const DEMO_STATUSES = ["New", "Contacted", "Demo Booked", "Won", "Lost"];
+const DEMO_CALL_STATUSES = ["Scheduled", "No Show", "Call Done", "Rescheduled", "N/A", "Need to Update"];
 const CONTACT_STATUSES = ["Lead", "Customer", "Partner", "Vendor", "Other"];
 const LEAD_SOURCES = ["Website", "Referral", "LinkedIn", "Cold Outreach", "Event", "Other"];
 const INDUSTRIES = ["Technology", "Healthcare", "Finance", "Retail", "Manufacturing", "Education", "Real Estate", "Other"];
@@ -19,6 +20,12 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   "Demo Booked":{ bg: "#f0fdf4", color: "#15803d" },
   Won:          { bg: "#dcfce7", color: "#16a34a" },
   Lost:         { bg: "#fee2e2", color: "#dc2626" },
+  "No Show":    { bg: "#fee2e2", color: "#dc2626" },
+  "Call Done":  { bg: "#dcfce7", color: "#16a34a" },
+  Rescheduled:  { bg: "#fef3c7", color: "#d97706" },
+  "N/A":        { bg: "#f3f4f6", color: "#6b7280" },
+  "Need to Update": { bg: "#eff6ff", color: "#2563eb" },
+  Scheduled:    { bg: "#eff6ff", color: "#2563eb" },
   Lead:         { bg: "#eff6ff", color: "#2563eb" },
   Customer:     { bg: "#dcfce7", color: "#16a34a" },
   Partner:      { bg: "#faf5ff", color: "#7c3aed" },
@@ -44,6 +51,11 @@ interface Contact {
   scheduled_at: string | null;
   demo_status: string | null;
   remarks: string | null;
+  campaign: string | null;
+  call_taken_by: string | null;
+  comments: string | null;
+  ai_memory: string | null;
+  scheduled_label: string | null;
   last_activity_at: string | null;
   created_at: string;
   updated_at: string;
@@ -90,11 +102,23 @@ function getDefaultCols(mode: CRMMode): ColDef[] {
     { key: "deal_size",       label: "Deal size",        width: 110, visible: true },
   ];
   if (mode === "demo") {
-    base.splice(6, 0,
-      { key: "scheduled_at", label: "Scheduled (ET)", width: 150, visible: true },
-      { key: "demo_status",  label: "Demo status",   width: 130, visible: true },
-      { key: "remarks",      label: "Remarks / Comments", width: 200, visible: true },
-    );
+    return [
+      { key: "contact_name",    label: "Name",              width: 140, visible: true },
+      { key: "scheduled_label", label: "Scheduled On",      width: 180, visible: true },
+      { key: "campaign",        label: "Campaign",          width: 160, visible: true },
+      { key: "demo_status",     label: "Status",            width: 120, visible: true },
+      { key: "call_taken_by",   label: "Call Taken By",     width: 120, visible: true },
+      { key: "comments",        label: "Comments",          width: 200, visible: true },
+      { key: "remarks",         label: "Remarks",           width: 160, visible: true },
+      { key: "ai_memory",       label: "AI Memory",         width: 180, visible: false },
+      { key: "status",          label: "Pipeline",          width: 120, visible: false },
+      { key: "phone",           label: "Phone",             width: 130, visible: false },
+      { key: "email",           label: "Email",             width: 180, visible: false },
+      { key: "lead_source",     label: "Lead source",       width: 130, visible: false },
+      { key: "tags",            label: "Tags",              width: 140, visible: false },
+      { key: "scheduled_at",    label: "Scheduled (ET)",    width: 150, visible: false },
+      { key: "last_activity_at",label: "Last activity",     width: 130, visible: false },
+    ];
   }
   return base;
 }
@@ -143,6 +167,12 @@ function cellValue(contact: Contact, col: ColDef): React.ReactNode {
   if (col.key === "tags") return <TagChips tags={contact.tags} />;
   if (col.key === "last_activity_at") return <span style={{ fontSize: 13, color: "#6b7280" }}>{fmtDate(contact.last_activity_at)}</span>;
   if (col.key === "scheduled_at") return <span style={{ fontSize: 13 }}>{fmtDateTime(contact.scheduled_at)}</span>;
+  if (col.key === "scheduled_label") return <span style={{ fontSize: 13, whiteSpace: "pre-line" }}>{contact.scheduled_label || fmtDateTime(contact.scheduled_at)}</span>;
+  if (col.key === "comments" || col.key === "remarks" || col.key === "ai_memory" || col.key === "campaign") {
+    const text = String(val ?? "");
+    if (!text) return <span style={{ color: "#d1d5db", fontSize: 13 }}>—</span>;
+    return <span style={{ fontSize: 13, color: "#374151" }} title={text}>{text.length > 80 ? text.slice(0, 80) + "…" : text}</span>;
+  }
   if (!val) return <span style={{ color: "#d1d5db", fontSize: 13 }}>—</span>;
   return <span style={{ fontSize: 13, color: "#374151" }}>{String(val)}</span>;
 }
@@ -169,8 +199,13 @@ function ContactModal({
     industry: contact?.industry ?? "",
     deal_size: contact?.deal_size ?? "",
     scheduled_at: contact?.scheduled_at ? contact.scheduled_at.slice(0, 16) : "",
+    scheduled_label: contact?.scheduled_label ?? "",
     demo_status: contact?.demo_status ?? "",
     remarks: contact?.remarks ?? "",
+    comments: contact?.comments ?? "",
+    campaign: contact?.campaign ?? "",
+    call_taken_by: contact?.call_taken_by ?? "",
+    ai_memory: contact?.ai_memory ?? "",
     tagInput: "",
     tags: contact?.tags ?? [] as string[],
   });
@@ -202,8 +237,13 @@ function ContactModal({
       industry: form.industry.trim() || null,
       deal_size: form.deal_size.trim() || null,
       scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+      scheduled_label: form.scheduled_label.trim() || null,
       demo_status: form.demo_status || null,
       remarks: form.remarks.trim() || null,
+      comments: form.comments.trim() || null,
+      campaign: form.campaign.trim() || null,
+      call_taken_by: form.call_taken_by.trim() || null,
+      ai_memory: form.ai_memory.trim() || null,
       updated_at: new Date().toISOString(),
     };
     let result;
@@ -285,6 +325,23 @@ function ContactModal({
             <div>
               <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#9ca3af", textTransform: "uppercase", margin: "0 0 10px" }}>Demo</p>
               <div style={Grid2}>
+                <Field label="Scheduled On">
+                  <textarea
+                    value={form.scheduled_label}
+                    onChange={(e) => set("scheduled_label", e.target.value)}
+                    rows={2}
+                    style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                    placeholder="Sunday, June 7 — 9-9.30pm (EDT)"
+                  />
+                </Field>
+                <Field label="Campaign"><Inp value={form.campaign} onChange={(v) => set("campaign", v)} placeholder="AI SMS Campaign" /></Field>
+                <Field label="Status">
+                  <select value={form.demo_status} onChange={(e) => set("demo_status", e.target.value)} style={Sel}>
+                    <option value="">—</option>
+                    {DEMO_CALL_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </Field>
+                <Field label="Call taken by"><Inp value={form.call_taken_by} onChange={(v) => set("call_taken_by", v)} placeholder="Seth / Adam" /></Field>
                 <Field label="Scheduled (ET)">
                   <input
                     type="datetime-local"
@@ -293,20 +350,32 @@ function ContactModal({
                     style={InpSt}
                   />
                 </Field>
-                <Field label="Demo status">
-                  <select value={form.demo_status} onChange={(e) => set("demo_status", e.target.value)} style={Sel}>
-                    <option value="">—</option>
-                    {["Scheduled", "Completed", "No-show", "Rescheduled"].map((s) => <option key={s}>{s}</option>)}
-                  </select>
-                </Field>
               </div>
-              <Field label="Remarks / Comments">
+              <Field label="Comments">
+                <textarea
+                  value={form.comments}
+                  onChange={(e) => set("comments", e.target.value)}
+                  rows={3}
+                  style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                  placeholder="Follow-up notes…"
+                />
+              </Field>
+              <Field label="Remarks">
                 <textarea
                   value={form.remarks}
                   onChange={(e) => set("remarks", e.target.value)}
-                  rows={3}
+                  rows={2}
                   style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
-                  placeholder="Notes from the demo call…"
+                  placeholder="Additional remarks…"
+                />
+              </Field>
+              <Field label="AI Memory (Conversation)">
+                <textarea
+                  value={form.ai_memory}
+                  onChange={(e) => set("ai_memory", e.target.value)}
+                  rows={4}
+                  style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                  placeholder="AI conversation transcript…"
                 />
               </Field>
             </div>
@@ -420,8 +489,10 @@ function ContactDetail({
                 ["Deal size", contact.deal_size],
                 ["Last activity", fmtDate(contact.last_activity_at)],
                 ...(mode === "demo" ? [
-                  ["Scheduled", fmtDateTime(contact.scheduled_at)],
-                  ["Demo status", contact.demo_status],
+                  ["Scheduled On", contact.scheduled_label || fmtDateTime(contact.scheduled_at)],
+                  ["Campaign", contact.campaign],
+                  ["Status", contact.demo_status],
+                  ["Call taken by", contact.call_taken_by],
                 ] : []),
               ] as [string, string | null][]).map(([label, val]) => (
                 <div key={label}>
@@ -431,10 +502,24 @@ function ContactDetail({
               ))}
             </div>
 
+            {contact.comments && (
+              <div>
+                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Comments</p>
+                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.comments}</p>
+              </div>
+            )}
+
             {contact.remarks && (
               <div>
                 <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Remarks</p>
-                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6 }}>{contact.remarks}</p>
+                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.remarks}</p>
+              </div>
+            )}
+
+            {contact.ai_memory && (
+              <div>
+                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>AI Memory</p>
+                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line", maxHeight: 240, overflowY: "auto" }}>{contact.ai_memory}</p>
               </div>
             )}
 
