@@ -399,6 +399,60 @@ export type Database = {
         }
         Relationships: []
       }
+      gtm_channels: {
+        Row: {
+          id: string; org_id: string; channel_type: string; enabled: boolean; created_at: string
+        }
+        Insert: {
+          id?: string; org_id: string; channel_type: string; enabled?: boolean; created_at?: string
+        }
+        Update: {
+          id?: string; org_id?: string; channel_type?: string; enabled?: boolean; created_at?: string
+        }
+        Relationships: []
+      }
+      gtm_campaigns: {
+        Row: {
+          id: string; channel_id: string; org_id: string; name: string; created_at: string
+        }
+        Insert: {
+          id?: string; channel_id: string; org_id: string; name: string; created_at?: string
+        }
+        Update: {
+          id?: string; channel_id?: string; org_id?: string; name?: string; created_at?: string
+        }
+        Relationships: []
+      }
+      gtm_campaign_metrics: {
+        Row: {
+          id: string; campaign_id: string; org_id: string
+          connections_made: number; replies: number; meetings_booked: number
+          spend: number; leads: number; cost_per_lead: number; ctr: number
+          sends: number; open_rate: number; reply_rate: number
+          sent: number; calls_made: number; connect_rate: number
+          warmup_done: boolean; domain_healthy: boolean; sender_reputation: number
+          updated_at: string
+        }
+        Insert: {
+          id?: string; campaign_id: string; org_id: string
+          connections_made?: number; replies?: number; meetings_booked?: number
+          spend?: number; leads?: number; cost_per_lead?: number; ctr?: number
+          sends?: number; open_rate?: number; reply_rate?: number
+          sent?: number; calls_made?: number; connect_rate?: number
+          warmup_done?: boolean; domain_healthy?: boolean; sender_reputation?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string; campaign_id?: string; org_id?: string
+          connections_made?: number; replies?: number; meetings_booked?: number
+          spend?: number; leads?: number; cost_per_lead?: number; ctr?: number
+          sends?: number; open_rate?: number; reply_rate?: number
+          sent?: number; calls_made?: number; connect_rate?: number
+          warmup_done?: boolean; domain_healthy?: boolean; sender_reputation?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_invites: {
         Row: {
           id: string; token: string; email: string; full_name: string | null
