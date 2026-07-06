@@ -871,8 +871,8 @@ const S: Record<string, React.CSSProperties> = {
   credMeta: { fontSize: 12.5, color: "#6b7280" },
   credNotes: { fontSize: 12, color: "#9ca3af", borderTop: "1px solid #f3f4f6", paddingTop: 8, marginTop: 4 },
   // Shared
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 },
-  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", display: "flex", flexDirection: "column" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, animation: "fadeIn 0.15s ease" },
+  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", display: "flex", flexDirection: "column", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)" },
   modalHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6" },
   modalTitle: { fontSize: 17, fontWeight: 700, color: "#111827" },
   closeBtn: { width: 28, height: 28, borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" },

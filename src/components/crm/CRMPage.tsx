@@ -1094,8 +1094,8 @@ function Inp({ value, onChange, placeholder }: { value: string; onChange: (v: st
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
-const Ov: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 };
-const Md: React.CSSProperties = { background: "#fff", borderRadius: 14, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", width: "100%", overflow: "hidden" };
+const Ov: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20, animation: "fadeIn 0.15s ease" };
+const Md: React.CSSProperties = { background: "#fff", borderRadius: 14, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", width: "100%", overflow: "hidden", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)" };
 const MdHd: React.CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "20px 24px 16px", gap: 12, borderBottom: "1px solid #f3f4f6" };
 const MdTt: React.CSSProperties = { fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 };
 const ClBtn: React.CSSProperties = { width: 28, height: 28, borderRadius: 6, border: "none", background: "#f3f4f6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", flexShrink: 0 };

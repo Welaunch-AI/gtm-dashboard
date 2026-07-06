@@ -580,10 +580,11 @@ export default function TicketsPage({ orgId, isAdmin, userName, userRole, userId
 const overlay: React.CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
   display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20,
+  animation: "fadeIn 0.15s ease",
 };
 const modal: React.CSSProperties = {
   background: "#fff", borderRadius: 14, boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-  width: "100%", overflow: "hidden",
+  width: "100%", overflow: "hidden", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)",
 };
 const modalHeader: React.CSSProperties = {
   display: "flex", alignItems: "flex-start", justifyContent: "space-between",

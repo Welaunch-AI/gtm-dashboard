@@ -6,52 +6,63 @@
 
 :root {
   /* Sidebar */
-  --sidebar-bg: #0b0d17;
-  --sidebar-width: 220px;
-  --sidebar-item-hover: rgba(255,255,255,0.06);
-  --sidebar-item-active-bg: rgba(99,102,241,0.15);
-  --sidebar-item-active-border: #6366f1;
-  --sidebar-text: rgba(255,255,255,0.55);
-  --sidebar-text-active: #ffffff;
-  --sidebar-section-label: rgba(255,255,255,0.28);
+  --sidebar-bg: #f9fafb;
+  --sidebar-width: 224px;
 
   /* Topbar */
   --topbar-bg: #ffffff;
   --topbar-border: #e5e7eb;
-  --topbar-height: 60px;
+  --topbar-height: 56px;
 
   /* Main canvas */
-  --canvas-bg: #f3f4f8;
+  --canvas-bg: #f9fafb;
   --card-bg: #ffffff;
   --card-border: #e5e7eb;
   --card-radius: 12px;
   --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
 
   /* Brand */
-  --accent: #6366f1;
-  --accent-dark: #4f46e5;
-  --accent-light: rgba(99,102,241,0.12);
+  --accent: #111827;
 
   /* Text */
-  --text-primary: #111827;
+  --text-primary: #0f172a;
   --text-secondary: #6b7280;
   --text-tertiary: #9ca3af;
 
-  /* Status */
-  --green: #22c55e;
-  --green-bg: rgba(34,197,94,0.1);
-  --red: #ef4444;
-  --red-bg: rgba(239,68,68,0.1);
-
   /* Typography */
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 html, body {
   height: 100%;
+  background: #f9fafb;
 }
 
+/* ── Smooth scrolling everywhere ─────────────────────────────────────────── */
+* {
+  scroll-behavior: smooth;
+}
+
+/* ── Scrollbar polish ────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ── Base resets ─────────────────────────────────────────────────────────── */
 a {
   color: inherit;
   text-decoration: none;
@@ -59,8 +70,74 @@ a {
 
 button {
   font-family: inherit;
+  cursor: pointer;
 }
 
 input, textarea, select {
   font-family: inherit;
+}
+
+/* ── Universal transition layer ──────────────────────────────────────────── */
+/* Anything interactive gets an instant feel */
+button,
+a,
+[role="button"] {
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    opacity 0.12s ease,
+    transform 0.1s ease;
+}
+
+button:active:not(:disabled),
+a:active {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* ── Input focus transitions ─────────────────────────────────────────────── */
+input, textarea, select {
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  outline: none;
+}
+
+/* ── Card / surface hover ────────────────────────────────────────────────── */
+.hover-lift {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.hover-lift:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+/* ── Shimmer animation for skeleton loaders ──────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* ── Fade-in for page content ────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: fadeIn 0.18s ease forwards;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Modal entrance ──────────────────────────────────────────────────────── */
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }

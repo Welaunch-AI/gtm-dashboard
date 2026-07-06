@@ -578,8 +578,8 @@ const S: Record<string, React.CSSProperties> = {
   goalGroupTitle: { fontSize: 13, fontWeight: 600, color: "#374151" },
   goalCount: { fontSize: 11.5, color: "#9ca3af" },
   // Modal
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 },
-  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, animation: "fadeIn 0.15s ease" },
+  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)" },
   modalHeader: { display: "flex", alignItems: "center", gap: 12, padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6" },
   modalTitle: { flex: 1, fontSize: 17, fontWeight: 700, color: "#111827" },
   closeBtn: { width: 28, height: 28, borderRadius: 6, border: "1px solid #e5e7eb", background: "#ffffff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", flexShrink: 0 },

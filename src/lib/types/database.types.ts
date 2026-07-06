@@ -413,13 +413,13 @@ export type Database = {
       }
       gtm_campaigns: {
         Row: {
-          id: string; channel_id: string; org_id: string; name: string; created_at: string
+          id: string; channel_id: string; org_id: string; name: string; status: string; created_at: string
         }
         Insert: {
-          id?: string; channel_id: string; org_id: string; name: string; created_at?: string
+          id?: string; channel_id: string; org_id: string; name: string; status?: string; created_at?: string
         }
         Update: {
-          id?: string; channel_id?: string; org_id?: string; name?: string; created_at?: string
+          id?: string; channel_id?: string; org_id?: string; name?: string; status?: string; created_at?: string
         }
         Relationships: []
       }
@@ -431,6 +431,10 @@ export type Database = {
           sends: number; open_rate: number; reply_rate: number
           sent: number; calls_made: number; connect_rate: number
           warmup_done: boolean; domain_healthy: boolean; sender_reputation: number
+          connections_sent: number; inmails_sent: number; connections_accepted: number; message_replies: number
+          total_leads_contacted: number; responded: number; not_responded: number; do_not_disturb: number
+          meetings_scheduled: number; meetings_completed: number; no_shows: number
+          meetings_rescheduled: number; pending_update: number; future_calls_scheduled: number
           updated_at: string
         }
         Insert: {
@@ -440,6 +444,10 @@ export type Database = {
           sends?: number; open_rate?: number; reply_rate?: number
           sent?: number; calls_made?: number; connect_rate?: number
           warmup_done?: boolean; domain_healthy?: boolean; sender_reputation?: number
+          connections_sent?: number; inmails_sent?: number; connections_accepted?: number; message_replies?: number
+          total_leads_contacted?: number; responded?: number; not_responded?: number; do_not_disturb?: number
+          meetings_scheduled?: number; meetings_completed?: number; no_shows?: number
+          meetings_rescheduled?: number; pending_update?: number; future_calls_scheduled?: number
           updated_at?: string
         }
         Update: {
@@ -449,6 +457,10 @@ export type Database = {
           sends?: number; open_rate?: number; reply_rate?: number
           sent?: number; calls_made?: number; connect_rate?: number
           warmup_done?: boolean; domain_healthy?: boolean; sender_reputation?: number
+          connections_sent?: number; inmails_sent?: number; connections_accepted?: number; message_replies?: number
+          total_leads_contacted?: number; responded?: number; not_responded?: number; do_not_disturb?: number
+          meetings_scheduled?: number; meetings_completed?: number; no_shows?: number
+          meetings_rescheduled?: number; pending_update?: number; future_calls_scheduled?: number
           updated_at?: string
         }
         Relationships: []

@@ -805,7 +805,7 @@ const S: Record<string, React.CSSProperties> = {
   approvalBtn: { padding: "7px 16px", borderRadius: 8, border: "1.5px solid", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" },
   feedbackItem: { padding: "10px 12px", background: "#f9fafb", borderRadius: 8, marginBottom: 8 },
   // Modal
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, animation: "fadeIn 0.15s ease" },
   modal: { background: "#fff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh" },
   modalHeader: { display: "flex", alignItems: "center", gap: 12, padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6" },
   modalTitle: { flex: 1, fontSize: 17, fontWeight: 700, color: "#111827" },

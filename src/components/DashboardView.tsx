@@ -19,6 +19,7 @@ interface Campaign {
   channel_id: string;
   org_id: string;
   name: string;
+  status?: string;
   created_at: string;
 }
 
@@ -41,6 +42,20 @@ interface Metrics {
   warmup_done: boolean;
   domain_healthy: boolean;
   sender_reputation: number;
+  connections_sent: number;
+  inmails_sent: number;
+  connections_accepted: number;
+  message_replies: number;
+  total_leads_contacted: number;
+  responded: number;
+  not_responded: number;
+  do_not_disturb: number;
+  meetings_scheduled: number;
+  meetings_completed: number;
+  no_shows: number;
+  meetings_rescheduled: number;
+  pending_update: number;
+  future_calls_scheduled: number;
 }
 
 const ZERO_METRICS: Omit<Metrics, "id" | "campaign_id"> = {
@@ -49,6 +64,10 @@ const ZERO_METRICS: Omit<Metrics, "id" | "campaign_id"> = {
   sends: 0, open_rate: 0, reply_rate: 0,
   sent: 0, calls_made: 0, connect_rate: 0,
   warmup_done: false, domain_healthy: false, sender_reputation: 0,
+  connections_sent: 0, inmails_sent: 0, connections_accepted: 0, message_replies: 0,
+  total_leads_contacted: 0, responded: 0, not_responded: 0, do_not_disturb: 0,
+  meetings_scheduled: 0, meetings_completed: 0, no_shows: 0,
+  meetings_rescheduled: 0, pending_update: 0, future_calls_scheduled: 0,
 };
 
 // ── Channel config ─────────────────────────────────────────────────────────────
@@ -74,7 +93,13 @@ function aggregate(metricsList: Metrics[], type: ChannelType): Partial<Metrics> 
 
   switch (type) {
     case "linkedin":
-      return { connections_made: sum("connections_made"), replies: sum("replies"), meetings_booked: sum("meetings_booked") };
+      return {
+        connections_sent: sum("connections_sent"),
+        inmails_sent: sum("inmails_sent"),
+        connections_accepted: sum("connections_accepted"),
+        message_replies: sum("message_replies"),
+        meetings_booked: sum("meetings_booked"),
+      };
     case "meta_ads": {
       const totalSpend = sum("spend");
       const totalLeads = sum("leads");
@@ -91,7 +116,18 @@ function aggregate(metricsList: Metrics[], type: ChannelType): Partial<Metrics> 
       };
     case "sms":
     case "ai_sms":
-      return { sent: sum("sent"), replies: sum("replies"), meetings_booked: sum("meetings_booked") };
+      return {
+        total_leads_contacted: sum("total_leads_contacted"),
+        responded: sum("responded"),
+        not_responded: sum("not_responded"),
+        do_not_disturb: sum("do_not_disturb"),
+        meetings_scheduled: sum("meetings_scheduled"),
+        meetings_completed: sum("meetings_completed"),
+        no_shows: sum("no_shows"),
+        meetings_rescheduled: sum("meetings_rescheduled"),
+        pending_update: sum("pending_update"),
+        future_calls_scheduled: sum("future_calls_scheduled"),
+      };
     case "ai_voice":
       return { calls_made: sum("calls_made"), connect_rate: avg("connect_rate"), meetings_booked: sum("meetings_booked") };
   }
@@ -121,11 +157,15 @@ function Modal({ children, onClose, width = 480 }: { children: React.ReactNode; 
   );
 }
 
-function MetricTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function fmtNum(n: number) {
+  return n.toLocaleString("en-US");
+}
+
+function MetricTile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div style={S.metricTile}>
       <p style={S.metricLabel}>{label}</p>
-      <p style={S.metricValue}>{value}</p>
+      <p style={{ ...S.metricValue, color: color ?? "#0f172a" }}>{value}</p>
       {sub && <p style={S.metricSub}>{sub}</p>}
     </div>
   );
@@ -152,12 +192,49 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 // ── Metrics display per channel ────────────────────────────────────────────────
 
-function LinkedInMetrics({ m }: { m: Partial<Metrics> }) {
+function LinkedInMetrics({ m, campaigns, paused }: { m: Partial<Metrics>; campaigns: Campaign[]; paused?: boolean }) {
+  const subtitle = campaigns.length > 1
+    ? `Cumulative performance across ${campaigns.map(c => c.name).join(", ")}`
+    : campaigns[0]?.name
+      ? `Performance for ${campaigns[0].name}`
+      : null;
+
   return (
-    <div style={S.metricsRow}>
-      <MetricTile label="Connections Made" value={fmt(m.connections_made ?? 0)} />
-      <MetricTile label="Replies" value={fmt(m.replies ?? 0)} />
-      <MetricTile label="Meetings Booked" value={fmt(m.meetings_booked ?? 0)} />
+    <>
+      {(subtitle || paused) && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
+          {subtitle && <p style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 500, margin: 0 }}>{subtitle}{paused ? " — campaigns currently paused." : ""}</p>}
+          {paused && (
+            <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: "#fef9c3", color: "#a16207", border: "1px solid #fde047", flexShrink: 0 }}>
+              ⏸ Paused
+            </span>
+          )}
+        </div>
+      )}
+      <div style={S.metricsGrid}>
+        <MetricTile label="Connections Sent" value={fmtNum(m.connections_sent ?? 0)} />
+        <MetricTile label="InMails Sent" value={fmtNum(m.inmails_sent ?? 0)} />
+        <MetricTile label="Connections Accepted" value={fmtNum(m.connections_accepted ?? 0)} color="#2563eb" />
+        <MetricTile label="Message Replies" value={fmtNum(m.message_replies ?? 0)} color="#16a34a" />
+        <MetricTile label="Meetings Booked" value={fmtNum(m.meetings_booked ?? 0)} color="#2563eb" />
+      </div>
+    </>
+  );
+}
+
+function AiSmsMetrics({ m }: { m: Partial<Metrics> }) {
+  return (
+    <div style={S.metricsGrid}>
+      <MetricTile label="Total Leads Contacted" value={fmtNum(m.total_leads_contacted ?? 0)} />
+      <MetricTile label="Responded" value={fmtNum(m.responded ?? 0)} color="#16a34a" />
+      <MetricTile label="Not Responded" value={fmtNum(m.not_responded ?? 0)} />
+      <MetricTile label="Do Not Disturb" value={fmtNum(m.do_not_disturb ?? 0)} color="#dc2626" />
+      <MetricTile label="Meetings Scheduled" value={fmtNum(m.meetings_scheduled ?? 0)} color="#2563eb" />
+      <MetricTile label="Meetings Completed" value={fmtNum(m.meetings_completed ?? 0)} color="#16a34a" />
+      <MetricTile label="No Shows" value={fmtNum(m.no_shows ?? 0)} color="#d97706" />
+      <MetricTile label="Meetings Rescheduled" value={fmtNum(m.meetings_rescheduled ?? 0)} />
+      <MetricTile label="Pending Update" value={fmtNum(m.pending_update ?? 0)} />
+      <MetricTile label="Future Calls Scheduled" value={fmtNum(m.future_calls_scheduled ?? 0)} color="#2563eb" />
     </div>
   );
 }
@@ -315,11 +392,28 @@ function EditMetricsModal({ campaign, channelType, metrics, orgId, onClose, onSa
   }
 
   const fields: Record<ChannelType, React.ReactNode> = {
-    linkedin: <><NumField label="Connections Made" fkey="connections_made" /><NumField label="Replies" fkey="replies" /><NumField label="Meetings Booked" fkey="meetings_booked" /></>,
+    linkedin: <>
+      <NumField label="Connections Sent" fkey="connections_sent" />
+      <NumField label="InMails Sent" fkey="inmails_sent" />
+      <NumField label="Connections Accepted" fkey="connections_accepted" />
+      <NumField label="Message Replies" fkey="message_replies" />
+      <NumField label="Meetings Booked" fkey="meetings_booked" />
+    </>,
     meta_ads: <><NumField label="Spend ($)" fkey="spend" step="0.01" /><NumField label="Leads" fkey="leads" /><NumField label="CTR (%)" fkey="ctr" step="0.01" /></>,
     email: <><NumField label="Emails Sent" fkey="sends" /><NumField label="Open Rate (%)" fkey="open_rate" step="0.01" /><NumField label="Reply Rate (%)" fkey="reply_rate" step="0.01" /><NumField label="Meetings Booked" fkey="meetings_booked" /><BoolField label="Warmup Done" fkey="warmup_done" /><BoolField label="Domain Healthy" fkey="domain_healthy" /><NumField label="Sender Reputation (0–100)" fkey="sender_reputation" /></>,
     sms: <><NumField label="SMS Sent" fkey="sent" /><NumField label="Replies" fkey="replies" /><NumField label="Meetings Booked" fkey="meetings_booked" /></>,
-    ai_sms: <><NumField label="AI SMS Sent" fkey="sent" /><NumField label="Replies" fkey="replies" /><NumField label="Meetings Booked" fkey="meetings_booked" /></>,
+    ai_sms: <>
+      <NumField label="Total Leads Contacted" fkey="total_leads_contacted" />
+      <NumField label="Responded" fkey="responded" />
+      <NumField label="Not Responded" fkey="not_responded" />
+      <NumField label="Do Not Disturb" fkey="do_not_disturb" />
+      <NumField label="Meetings Scheduled" fkey="meetings_scheduled" />
+      <NumField label="Meetings Completed" fkey="meetings_completed" />
+      <NumField label="No Shows" fkey="no_shows" />
+      <NumField label="Meetings Rescheduled" fkey="meetings_rescheduled" />
+      <NumField label="Pending Update" fkey="pending_update" />
+      <NumField label="Future Calls Scheduled" fkey="future_calls_scheduled" />
+    </>,
     ai_voice: <><NumField label="Calls Made (manual override)" fkey="calls_made" /><NumField label="Connect Rate (%)" fkey="connect_rate" step="0.01" /><NumField label="Meetings Booked" fkey="meetings_booked" /></>,
   };
 
@@ -412,6 +506,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
     .filter(Boolean) as Metrics[];
 
   const agg = aggregate(displayedMetrics, channel.channel_type);
+  const anyPaused = displayedCampaigns.some(c => c.status === "paused");
 
   const activeCampaign: Campaign | null =
     selectedCampaignId
@@ -496,15 +591,20 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, autoVo
         {/* Metrics */}
         {campaigns.length > 0 && (
           <div style={{ padding: "16px 22px 0" }}>
-            {channel.channel_type === "linkedin" && <LinkedInMetrics m={agg} />}
+            {channel.channel_type === "linkedin" && (
+              <LinkedInMetrics m={agg} campaigns={displayedCampaigns} paused={anyPaused} />
+            )}
             {channel.channel_type === "meta_ads" && (
               <MetaAdsMetrics m={agg} campaigns={displayedCampaigns} allMetrics={displayedMetrics} />
             )}
             {channel.channel_type === "email" && (
               <EmailMetrics m={agg} campaigns={displayedCampaigns} allMetrics={displayedMetrics} selectedCampaignId={selectedCampaignId} />
             )}
-            {(channel.channel_type === "sms" || channel.channel_type === "ai_sms") && (
-              <SmsMetrics m={agg} label={channel.channel_type === "ai_sms" ? "AI SMS" : "SMS"} />
+            {channel.channel_type === "sms" && (
+              <SmsMetrics m={agg} label="SMS" />
+            )}
+            {channel.channel_type === "ai_sms" && (
+              <AiSmsMetrics m={agg} />
             )}
             {channel.channel_type === "ai_voice" && (
               <VoiceMetrics m={agg} autoCallCount={autoVoiceCalls} />
@@ -711,6 +811,7 @@ const S: Record<string, React.CSSProperties> = {
   campaignSelect: { padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#fff", fontSize: 12.5, color: "#374151", cursor: "pointer", outline: "none", fontWeight: 500 },
   outlineSmBtn: { display: "flex", alignItems: "center", gap: 4, padding: "5px 11px", borderRadius: 7, border: "1px solid #e5e7eb", background: "none", fontSize: 12, color: "#6b7280", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" as const },
   metricsRow: { display: "flex", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
+  metricsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, background: "#f1f5f9", borderRadius: 10, overflow: "hidden", marginBottom: 16 },
   metricTile: { flex: 1, background: "#ffffff", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 5 },
   metricLabel: { fontSize: 10.5, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.6px", fontWeight: 700 },
   metricValue: { fontSize: 26, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.8px" },
@@ -722,8 +823,8 @@ const S: Record<string, React.CSSProperties> = {
   miniTableRow: { display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "9px 14px", borderBottom: "1px solid #f3f4f6" },
   miniTd: { fontSize: 13, color: "#374151" },
   inboxHealth: { marginBottom: 16 },
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 },
-  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20, animation: "fadeIn 0.15s ease" },
+  modal: { background: "#ffffff", borderRadius: 16, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", maxHeight: "90vh", animation: "modalIn 0.18s cubic-bezier(0.34,1.56,0.64,1)" },
   modalHeader: { display: "flex", alignItems: "center", gap: 12, padding: "18px 22px 14px", borderBottom: "1px solid #f3f4f6" },
   modalTitle: { flex: 1, fontSize: 15, fontWeight: 700, color: "#111827" },
   closeBtn: { width: 28, height: 28, borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" },

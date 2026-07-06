@@ -135,8 +135,9 @@ const S: Record<string, React.CSSProperties> = {
     padding: "9px 12px",
     borderRadius: 8,
     cursor: "pointer",
-    transition: "background 0.12s",
+    transition: "background 0.1s ease, color 0.1s ease",
     textDecoration: "none",
+    willChange: "background",
   },
   navItemActive: {
     background: "#111827",
@@ -149,6 +150,7 @@ const S: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    transition: "color 0.1s ease",
   },
   navIconActive: {
     color: "#ffffff",
