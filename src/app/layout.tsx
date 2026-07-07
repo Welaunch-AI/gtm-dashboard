@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import NavigationProgress from "@/components/NavigationProgress";
+import AppProviders from "@/components/ui/AppProviders";
 
 export const metadata: Metadata = {
   title: "WeLaunch Client Portal",
@@ -16,10 +17,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Suspense fallback={null}>
-          <NavigationProgress />
-        </Suspense>
-        {children}
+        <AppProviders>
+          <Suspense fallback={null}>
+            <NavigationProgress />
+          </Suspense>
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

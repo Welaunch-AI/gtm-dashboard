@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { logActivity } from "@/lib/logActivity";
 import { EMPTY_VALUE, formatDateEST, formatDateESTShort } from "@/lib/datetime";
 
@@ -182,6 +183,7 @@ function TaskDetailModal({ task, authorName, onClose, onUpdated, onDeleted }: { 
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   useEffect(() => {
     const sb = createClient();
@@ -229,7 +231,12 @@ function TaskDetailModal({ task, authorName, onClose, onUpdated, onDeleted }: { 
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this task?")) return;
+    if (!(await confirm({
+      title: "Delete task",
+      message: "Delete this task? This cannot be undone.",
+      confirmLabel: "Delete task",
+      destructive: true,
+    }))) return;
     const sb = createClient();
     await sb.from("tasks").delete().eq("id", task.id);
     onDeleted(task.id);

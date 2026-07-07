@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { logActivity } from "@/lib/logActivity";
 import { EMPTY_VALUE, formatDateEST, formatDateTimeEST } from "@/lib/datetime";
 
@@ -414,6 +415,7 @@ function ContactDetail({
   const [posting, setPosting] = useState(false);
   const [editing, setEditing] = useState(false);
   const notesEndRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     createClient().from("crm_notes").select("*").eq("contact_id", contact.id)
@@ -439,7 +441,12 @@ function ContactDetail({
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete this contact?`)) return;
+    if (!(await confirm({
+      title: "Delete contact",
+      message: "Delete this contact? This cannot be undone.",
+      confirmLabel: "Delete contact",
+      destructive: true,
+    }))) return;
     await createClient().from("crm_contacts").delete().eq("id", contact.id);
     onDelete(contact.id);
     onClose();

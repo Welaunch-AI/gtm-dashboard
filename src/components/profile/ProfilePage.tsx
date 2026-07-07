@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -365,6 +366,7 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const hasFetched = useRef(false);
+  const confirm = useConfirm();
 
   function showToast(msg: string, type: "success" | "error") {
     setToast({ msg, type });
@@ -430,7 +432,12 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
   }
 
   async function revokeInvite(inviteId: string) {
-    if (!confirm("Revoke this invite link? It will no longer work.")) return;
+    if (!(await confirm({
+      title: "Revoke invite",
+      message: "Revoke this invite link? It will no longer work.",
+      confirmLabel: "Revoke",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/admin/invites", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -466,7 +473,12 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
   }
 
   async function handleDelete(userId: string) {
-    if (!confirm("Remove this user? They will no longer be able to log in.")) return;
+    if (!(await confirm({
+      title: "Remove user",
+      message: "Remove this user? They will no longer be able to log in.",
+      confirmLabel: "Remove user",
+      destructive: true,
+    }))) return;
     const res = await fetch("/api/admin/users", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
+import ActionMenu from "@/components/ui/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,19 +91,14 @@ function Modal({ children, onClose, width = 480 }: { children: React.ReactNode; 
 // ── Item Card ─────────────────────────────────────────────────────────────────
 
 function CardMenu({ canEdit, onEdit, onDelete }: { canEdit: boolean; onEdit?: () => void; onDelete: () => void }) {
-  const [open, setOpen] = useState(false);
   if (!canEdit) return null;
+  const items = [
+    ...(onEdit ? [{ label: "Edit", onClick: onEdit, icon: <EditIcon /> }] : []),
+    { label: "Delete", onClick: onDelete, danger: true, icon: <TrashIcon /> },
+  ];
   return (
-    <div style={{ position: "relative", flexShrink: 0 }} data-menu>
-      <button style={S.cardMenuBtn} onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(o => !o); }}>
-        <DotsHIcon />
-      </button>
-      {open && (
-        <div style={S.cardDropdown}>
-          {onEdit && <button style={S.cardDropItem} onClick={e => { e.preventDefault(); e.stopPropagation(); onEdit(); setOpen(false); }}><EditIcon /> Edit</button>}
-          <button style={{ ...S.cardDropItem, color: "#dc2626" }} onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); setOpen(false); }}><TrashIcon /> Delete</button>
-        </div>
-      )}
+    <div data-menu>
+      <ActionMenu items={items} buttonStyle={S.cardMenuBtn} />
     </div>
   );
 }
@@ -192,6 +189,7 @@ function FolderDetail({ folder, orgId, isAdmin, canEdit, onBack, onFolderRenamed
   const [linkForm, setLinkForm] = useState({ name: "", url: "", is_admin_only: false });
   const [noteForm, setNoteForm] = useState({ name: "", content: "", is_admin_only: false });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -249,7 +247,7 @@ function FolderDetail({ folder, orgId, isAdmin, canEdit, onBack, onFolderRenamed
   }
 
   async function deleteItem(id: string) {
-    if (!confirm("Delete this item?")) return;
+    if (!(await confirm({ title: "Delete item", message: "Delete this item? This cannot be undone.", destructive: true }))) return;
     const sb = createClient();
     await sb.from("kb_items").delete().eq("id", id);
     setItems(p => p.filter(i => i.id !== id));
@@ -264,7 +262,12 @@ function FolderDetail({ folder, orgId, isAdmin, canEdit, onBack, onFolderRenamed
   }
 
   async function deleteFolder() {
-    if (!confirm(`Delete folder "${folder.name}" and all its contents? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: "Delete folder",
+      message: `Delete "${folder.name}" and all its contents? This cannot be undone.`,
+      confirmLabel: "Delete folder",
+      destructive: true,
+    }))) return;
     const sb = createClient();
     await sb.from("kb_folders").delete().eq("id", folder.id);
     onFolderDeleted(folder.id);
@@ -474,6 +477,7 @@ function CredentialsVault({ folder, orgId, isAdmin, onBack }: { folder: Folder; 
   const [editCred, setEditCred] = useState<Credential | null>(null);
   const blankForm = () => ({ site_name: "", username: "", password: "", notes: "", is_admin_only: false });
   const [form, setForm] = useState(blankForm());
+  const confirm = useConfirm();
 
   useEffect(() => {
     const sb = createClient();
@@ -524,7 +528,7 @@ function CredentialsVault({ folder, orgId, isAdmin, onBack }: { folder: Folder; 
   }
 
   async function deleteCred(id: string) {
-    if (!confirm("Delete this credential?")) return;
+    if (!(await confirm({ title: "Delete credential", message: "Delete this credential? This cannot be undone.", destructive: true }))) return;
     const sb = createClient();
     await sb.from("kb_credentials").delete().eq("id", id);
     setCredentials(p => p.filter(c => c.id !== id));
@@ -658,12 +662,12 @@ function FolderList({ folders, isAdmin, canEdit, onOpen, onCreateFolder, onDelet
   folders: Folder[]; isAdmin: boolean; canEdit: boolean;
   onOpen: (f: Folder) => void;
   onCreateFolder: (name: string, adminOnly: boolean) => void;
-  onDeleteFolder: (id: string) => void;
+  onDeleteFolder: (folder: Folder) => void;
 }) {
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [adminOnly, setAdminOnly] = useState(false);
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   function handleCreate() {
     if (!newName.trim()) return;
@@ -701,14 +705,23 @@ function FolderList({ folders, isAdmin, canEdit, onOpen, onCreateFolder, onDelet
                   </div>
                 </div>
                 {canEdit && !f.is_credentials_vault && (
-                  <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
-                    <button style={S.menuDotBtn} onClick={() => setMenuOpen(menuOpen === f.id ? null : f.id)}><DotsHIcon /></button>
-                    {menuOpen === f.id && (
-                      <div style={S.cardDropdown}>
-                        <button style={{ ...S.cardDropItem, color: "#dc2626" }} onClick={() => { onDeleteFolder(f.id); setMenuOpen(null); }}><TrashIcon /> Delete folder</button>
-                      </div>
-                    )}
-                  </div>
+                  <ActionMenu
+                    items={[{
+                      label: "Delete folder",
+                      danger: true,
+                      icon: <TrashIcon />,
+                      onClick: async () => {
+                        if (!(await confirm({
+                          title: "Delete folder",
+                          message: `Delete "${f.name}" and all its contents? This cannot be undone.`,
+                          confirmLabel: "Delete folder",
+                          destructive: true,
+                        }))) return;
+                        onDeleteFolder(f);
+                      },
+                    }]}
+                    buttonStyle={S.menuDotBtn}
+                  />
                 )}
               </div>
               {f.is_admin_only && <span style={{ ...S.adminBadge, display: "inline-block", marginTop: 8 }}>Admin only</span>}
@@ -790,11 +803,10 @@ export default function KnowledgePage({ orgId, isAdmin, canEdit = isAdmin }: Pro
     if (data) setFolders(p => [...p, { ...(data as Folder), _itemCount: 0 }]);
   }
 
-  async function handleDeleteFolder(id: string) {
-    if (!confirm("Delete this folder and all its contents?")) return;
+  async function handleDeleteFolder(folder: Folder) {
     const sb = createClient();
-    await sb.from("kb_folders").delete().eq("id", id);
-    setFolders(p => p.filter(f => f.id !== id));
+    await sb.from("kb_folders").delete().eq("id", folder.id);
+    setFolders(p => p.filter(f => f.id !== folder.id));
   }
 
   if (openFolder) {
@@ -831,7 +843,7 @@ const S: Record<string, React.CSSProperties> = {
   pageTitle: { fontSize: 22, fontWeight: 700, color: "#111827", letterSpacing: "-0.4px" },
   pageSubtitle: { fontSize: 13, color: "#6b7280", marginTop: 3 },
   folderGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 },
-  folderCard: { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", cursor: "pointer", position: "relative" },
+  folderCard: { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", cursor: "pointer", position: "relative", overflow: "visible" },
   folderIconWrap: { width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   folderName: { fontSize: 14, fontWeight: 600, color: "#111827" },
   folderMeta: { fontSize: 12, color: "#9ca3af", marginTop: 2 },

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ function FileCard({
   const [editNote, setEditNote] = useState(false);
   const [noteText, setNoteText] = useState(file.note ?? "");
   const [savingNote, setSavingNote] = useState(false);
+  const confirm = useConfirm();
 
   async function saveNote() {
     setSavingNote(true);
@@ -94,7 +96,11 @@ function FileCard({
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete ${file.file_name}?`)) return;
+    if (!(await confirm({
+      title: "Delete file",
+      message: `Delete "${file.file_name}"? This cannot be undone.`,
+      destructive: true,
+    }))) return;
     // Remove from storage
     const supabase = createClient();
     const path = file.url.split("/mkt-dump/")[1];

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import {
   addDaysYmd,
   formatShortDateEST,
@@ -127,6 +128,7 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   useEffect(() => {
     createClient().from("cal_post_media").select("*").eq("post_id", postId).order("created_at")
@@ -158,7 +160,11 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
   }
 
   async function deleteMedia(m: PostMedia) {
-    if (!confirm(`Delete "${m.file_name ?? "this file"}"?`)) return;
+    if (!(await confirm({
+      title: "Delete media",
+      message: `Delete "${m.file_name ?? "this file"}"? This cannot be undone.`,
+      destructive: true,
+    }))) return;
     // Extract storage path from public URL
     const url = new URL(m.url);
     const storagePath = url.pathname.split("/object/public/cal-media/")[1];
@@ -245,6 +251,7 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [fbText, setFbText] = useState("");
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   useEffect(() => {
     createClient().from("cal_post_feedback").select("*").eq("post_id", post.id).order("created_at").then(({ data }) => setFeedback((data ?? []) as Feedback[]));
@@ -272,7 +279,12 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this post?")) return;
+    if (!(await confirm({
+      title: "Delete post",
+      message: "Delete this post? This cannot be undone.",
+      confirmLabel: "Delete post",
+      destructive: true,
+    }))) return;
     await createClient().from("cal_posts").delete().eq("id", post.id);
     onDeleted(post.id);
     onClose();

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { computeVoiceStats, formatVoiceDuration, type VoiceStats } from "@/lib/voice/stats";
 import { EMPTY_VALUE } from "@/lib/datetime";
 
@@ -576,6 +577,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
   const [showAddCampaign, setShowAddCampaign] = useState(false);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const cfg = CHANNEL_CONFIG[channel.channel_type];
 
@@ -606,7 +608,12 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
   }
 
   async function handleDeleteCampaign(campaign: Campaign) {
-    if (!confirm(`Delete campaign "${campaign.name}"? This will also remove all its metrics.`)) return;
+    if (!(await confirm({
+      title: "Delete campaign",
+      message: `Delete "${campaign.name}"? This will also remove all its metrics.`,
+      confirmLabel: "Delete campaign",
+      destructive: true,
+    }))) return;
     setDeletingId(campaign.id);
     const sb = createClient();
     await sb.from("gtm_campaigns").delete().eq("id", campaign.id);
