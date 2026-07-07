@@ -560,6 +560,55 @@ function AssetDrop({ orgId, isAdmin }: { orgId: string | null; isAdmin: boolean 
   );
 }
 
+// ── Day Posts Modal (shows all posts for a given date) ────────────────────────
+
+function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }: {
+  date: string; posts: CalPost[];
+  onClose: () => void; onPostClick: (p: CalPost) => void;
+  isAdmin: boolean; onNewPost: () => void;
+}) {
+  return (
+    <Modal onClose={onClose} width={480}>
+      <div style={S.modalHeader}>
+        <h2 style={S.modalTitle}>{fmtDate(date)}</h2>
+        <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
+      </div>
+      <div style={{ ...S.modalBody, gap: 10 }}>
+        {posts.length === 0 && <p style={{ fontSize: 13, color: "#9ca3af" }}>No posts scheduled for this day.</p>}
+        {posts.map(p => {
+          const pc = PLATFORM_COLORS[p.platform];
+          const ss = STATUS_STYLE[p.status];
+          return (
+            <div
+              key={p.id}
+              onClick={() => { onPostClick(p); onClose(); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                borderRadius: 10, border: "1px solid #e5e7eb", cursor: "pointer",
+                background: "#fff", transition: "background 0.1s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
+            >
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: pc.dot, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</p>
+                {p.scheduled_time && <p style={{ fontSize: 11.5, color: "#9ca3af", margin: "2px 0 0" }}>{fmtTime(p.scheduled_time)}</p>}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: pc.bg, color: pc.text, flexShrink: 0 }}>{p.platform}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: ss.bg, color: ss.color, flexShrink: 0 }}>{ss.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ ...S.modalFooter, justifyContent: "space-between" }}>
+        {isAdmin && <button onClick={() => { onNewPost(); onClose(); }} style={S.primaryBtn}><PlusIcon /> New post</button>}
+        <button onClick={onClose} style={S.cancelBtn}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Month Grid View ───────────────────────────────────────────────────────────
 
 function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
@@ -570,6 +619,7 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const firstDay = getFirstDayOfMonth(year, month);
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
+  const [overflowDate, setOverflowDate] = useState<string | null>(null);
 
   const cells: { dateStr: string | null; day: number; isCurrentMonth: boolean }[] = [];
   for (let i = 0; i < firstDay; i++) cells.push({ dateStr: null, day: prevMonthDays - firstDay + 1 + i, isCurrentMonth: false });
@@ -582,95 +632,155 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const postsByDate: Record<string, CalPost[]> = {};
   posts.forEach(p => { (postsByDate[p.scheduled_date] ??= []).push(p); });
 
+  const CHIP_LIMIT = 3;
+
   return (
-    <div style={S.calGrid}>
-      {DAY_NAMES.map(d => (
-        <div key={d} style={S.calDayHeader}>{d}</div>
-      ))}
-      {cells.map((cell, i) => {
-        const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
-        const isToday = cell.dateStr === todayStr;
-        return (
-          <div
-            key={i}
-            style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth && isAdmin ? "pointer" : "default" }}
-            onClick={() => { if (cell.dateStr && cell.isCurrentMonth && isAdmin) onDayClick(cell.dateStr); }}
-          >
-            <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
-              {dayPosts.slice(0, 3).map(p => {
-                const pc = PLATFORM_COLORS[p.platform];
-                return (
-                  <div
-                    key={p.id}
-                    style={S.calPostChip}
-                    onClick={e => { e.stopPropagation(); onPostClick(p); }}
+    <>
+      <div style={S.calGrid}>
+        {DAY_NAMES.map(d => (
+          <div key={d} style={S.calDayHeader}>{d}</div>
+        ))}
+        {cells.map((cell, i) => {
+          const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
+          const isToday = cell.dateStr === todayStr;
+          const overflow = dayPosts.length - CHIP_LIMIT;
+          return (
+            <div
+              key={i}
+              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default" }}
+              onClick={() => {
+                if (!cell.dateStr || !cell.isCurrentMonth) return;
+                if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
+                else if (isAdmin) onDayClick(cell.dateStr);
+              }}
+            >
+              <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
+                {dayPosts.slice(0, CHIP_LIMIT).map(p => {
+                  const pc = PLATFORM_COLORS[p.platform];
+                  return (
+                    <div
+                      key={p.id}
+                      style={S.calPostChip}
+                      onClick={e => { e.stopPropagation(); onPostClick(p); }}
+                    >
+                      <span style={{ ...S.calDot, background: pc.dot }} />
+                      <span style={S.calChipTitle}>{p.title}</span>
+                      <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <button
+                    style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 4, background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+                    onClick={e => { e.stopPropagation(); setOverflowDate(cell.dateStr!); }}
                   >
-                    <span style={{ ...S.calDot, background: pc.dot }} />
-                    <span style={S.calChipTitle}>{p.title}</span>
-                    <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
-                  </div>
-                );
-              })}
-              {dayPosts.length > 3 && (
-                <span style={{ fontSize: 10.5, color: "#9ca3af", paddingLeft: 4 }}>+{dayPosts.length - 3} more</span>
-              )}
+                    +{overflow} more
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+
+      {overflowDate && (
+        <DayPostsModal
+          date={overflowDate}
+          posts={postsByDate[overflowDate] ?? []}
+          isAdmin={isAdmin}
+          onClose={() => setOverflowDate(null)}
+          onPostClick={onPostClick}
+          onNewPost={() => onDayClick(overflowDate)}
+        />
+      )}
+    </>
   );
 }
 
 // ── Week View ─────────────────────────────────────────────────────────────────
 
-function WeekGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
+function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
   const weekStart = startOfWeekYmdEST();
+  const [overflowDate, setOverflowDate] = useState<string | null>(null);
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const dateStr = addDaysYmd(weekStart, i);
-    return {
-      dateStr,
-      label: DAY_NAMES[i],
-      dayNum: Number(dateStr.split("-")[2]),
-    };
+    return { dateStr, label: DAY_NAMES[i], dayNum: Number(dateStr.split("-")[2]) };
   });
 
   const postsByDate: Record<string, CalPost[]> = {};
   posts.forEach(p => { (postsByDate[p.scheduled_date] ??= []).push(p); });
 
+  const WEEK_CHIP_LIMIT = 4;
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-      {days.map(({ dateStr, label, dayNum }) => {
-        const dayPosts = postsByDate[dateStr] ?? [];
-        const isToday = dateStr === todayStr;
-        return (
-          <div key={dateStr} style={{ borderRight: "1px solid #f3f4f6", minHeight: 200, padding: 8, background: "#fff", cursor: isAdmin ? "pointer" : "default" }}
-            onClick={() => isAdmin && onDayClick(dateStr)}>
-            <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 4 }}>{label}</div>
-            <div style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}), marginBottom: 6 }}>{dayNum}</div>
-            {dayPosts.map(p => {
-              const pc = PLATFORM_COLORS[p.platform];
-              return (
-                <div key={p.id} style={{ ...S.calPostChip, marginBottom: 4, flexDirection: "column", alignItems: "flex-start", gap: 3 }}
-                  onClick={e => { e.stopPropagation(); onPostClick(p); }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ ...S.calDot, background: pc.dot }} />
-                    <span style={S.calChipTitle}>{p.title}</span>
-                  </div>
-                  <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", width: "100%", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+        {days.map(({ dateStr, label, dayNum }) => {
+          const dayPosts = postsByDate[dateStr] ?? [];
+          const isToday = dateStr === todayStr;
+          const overflow = dayPosts.length - WEEK_CHIP_LIMIT;
+          return (
+            <div
+              key={dateStr}
+              style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
+            >
+              {/* Day header */}
+              <div
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8, cursor: isAdmin ? "pointer" : "default" }}
+                onClick={() => isAdmin && onDayClick(dateStr)}
+              >
+                <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, letterSpacing: "0.5px", marginBottom: 3 }}>{label}</span>
+                <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
+              </div>
+              {/* Posts */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                {dayPosts.slice(0, WEEK_CHIP_LIMIT).map(p => {
+                  const pc = PLATFORM_COLORS[p.platform];
+                  return (
+                    <div
+                      key={p.id}
+                      style={{ ...S.calPostChip, flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "5px 6px" }}
+                      onClick={e => { e.stopPropagation(); onPostClick(p); }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
+                        <span style={{ ...S.calDot, background: pc.dot }} />
+                        <span style={{ ...S.calChipTitle, maxWidth: "none", flex: 1 }}>{p.title}</span>
+                      </div>
+                      <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <button
+                    style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 4, background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 2 }}
+                    onClick={() => setOverflowDate(dateStr)}
+                  >
+                    +{overflow} more
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {overflowDate && (
+        <DayPostsModal
+          date={overflowDate}
+          posts={postsByDate[overflowDate] ?? []}
+          isAdmin={isAdmin}
+          onClose={() => setOverflowDate(null)}
+          onPostClick={onPostClick}
+          onNewPost={() => onDayClick(overflowDate)}
+        />
+      )}
+    </>
   );
 }
 
@@ -790,16 +900,16 @@ const S: Record<string, React.CSSProperties> = {
   outlineBtn: { display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", fontSize: 13, color: "#374151", cursor: "pointer" },
   primaryBtn: { display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer" },
   // Calendar grid
-  calGrid: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" },
+  calGrid: { display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", width: "100%", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" },
   calDayHeader: { padding: "8px 10px", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.5px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", textAlign: "center" },
-  calCell: { minHeight: 110, padding: "8px 8px 6px", borderRight: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", background: "#ffffff", verticalAlign: "top", overflow: "hidden" },
+  calCell: { minHeight: 120, padding: "8px 8px 6px", borderRight: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", background: "#ffffff", verticalAlign: "top" },
   calCellGray: { background: "#fafafa" },
   calDayNum: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: "50%", fontSize: 12.5, fontWeight: 500, color: "#374151" },
   calDayToday: { background: "#111827", color: "#ffffff", fontWeight: 700 },
-  calPostChip: { display: "flex", alignItems: "center", gap: 4, padding: "3px 5px", borderRadius: 5, background: "#f9fafb", cursor: "pointer", marginBottom: 2 },
+  calPostChip: { display: "flex", alignItems: "center", gap: 4, padding: "3px 5px", borderRadius: 5, background: "#f0f4ff", border: "1px solid #e0e7ff", cursor: "pointer", marginBottom: 2 },
   calDot: { width: 6, height: 6, borderRadius: "50%", flexShrink: 0 },
-  calChipTitle: { fontSize: 11, color: "#111827", fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: 1, maxWidth: 80 },
-  calChipPlatform: { fontSize: 9.5, fontWeight: 600, padding: "1px 5px", borderRadius: 10, flexShrink: 0 },
+  calChipTitle: { fontSize: 10.5, color: "#1e293b", fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flex: 1, minWidth: 0 },
+  calChipPlatform: { fontSize: 9.5, fontWeight: 600, padding: "1px 5px", borderRadius: 10, flexShrink: 0, whiteSpace: "nowrap" },
   // Asset drop
   dropZone: { border: "2px dashed #e5e7eb", borderRadius: 10, padding: "24px", display: "flex", flexDirection: "column", alignItems: "center", background: "#fafafa", transition: "all 0.15s", gap: 4 },
   dropZoneActive: { borderColor: "#6366f1", background: "#eef2ff" },
