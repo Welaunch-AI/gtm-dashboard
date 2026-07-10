@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { computeVoiceStats, formatVoiceDuration, resolveVoiceOutcome } from "@/lib/voice/stats";
 import { formatDateTimeEST, formatShortDateEST } from "@/lib/datetime";
+import { SkeletonList, SkeletonCard } from "@/components/ui/Skeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -376,7 +377,9 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
 
       {/* Stats bar */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
-        {[
+        {loading ? (
+          [0,1,2,3].map((i) => <SkeletonCard key={i} />)
+        ) : [
           { label: "Calls", value: totalCalls, icon: <PhoneIcon size={20} /> },
           { label: "Meetings booked", value: meetingsBooked, icon: <CalendarIcon size={20} /> },
           { label: "Qualified", value: qualified, icon: <PersonIcon size={20} /> },
@@ -475,12 +478,11 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
       </div>
 
       {/* Call list */}
+      {loading ? (
+        <SkeletonList rows={7} />
+      ) : (
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-        {loading ? (
-          <div style={{ padding: 48, textAlign: "center", color: "#9ca3af", fontSize: 15 }}>
-            Loading calls…
-          </div>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div style={{ padding: 48, textAlign: "center", color: "#9ca3af", fontSize: 15 }}>
             No calls found.
           </div>
@@ -605,6 +607,7 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
           })
         )}
       </div>
+      )}
 
       {/* Load more */}
       {nextCursor && !loading && (

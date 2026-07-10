@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { SkeletonTable } from "@/components/ui/Skeleton";
 import { logActivity } from "@/lib/logActivity";
 import { EMPTY_VALUE, formatDateEST, formatDateTimeEST, formatDateTimeOrdinalEST, cleanScheduledLabel } from "@/lib/datetime";
 
@@ -1436,7 +1437,7 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
 
           {/* Rows */}
           {loading ? (
-            <div style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>Loading…</div>
+            <SkeletonTable rows={8} cols={visibleCols.length || 5} />
           ) : filtered.length === 0 ? (
             <div style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>No contacts match your filters.</div>
           ) : (

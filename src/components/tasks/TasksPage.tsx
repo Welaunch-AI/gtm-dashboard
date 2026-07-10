@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { SkeletonRow } from "@/components/ui/Skeleton";
 import { logActivity } from "@/lib/logActivity";
 import { EMPTY_VALUE, formatDateEST, formatDateESTShort } from "@/lib/datetime";
 
@@ -480,7 +481,15 @@ export default function TasksPage({ orgId, authorName, userId, userRole, orgName
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "#9ca3af", fontSize: 13 }}>Loading…</td></tr>
+                  <>
+                    {[0,1,2,3,4,5,6].map((i) => (
+                      <tr key={i}>
+                        <td colSpan={5} style={{ padding: 0 }}>
+                          <SkeletonRow cols={5} height={13} />
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 ) : filtered.length === 0 ? (
                   <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "#9ca3af", fontSize: 13 }}>No tasks match these filters.</td></tr>
                 ) : filtered.map(t => (

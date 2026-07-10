@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/logActivity";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatDateEST, formatDateTimeEST } from "@/lib/datetime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -508,7 +509,7 @@ export default function TicketsPage({ orgId, isAdmin, userName, userRole, userId
         </div>
 
         {loading ? (
-          <div style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>Loading tickets…</div>
+          <SkeletonList rows={7} />
         ) : filtered.length === 0 ? (
           <div style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>
             {filterStatus === "All statuses" ? "No tickets yet. Raise the first one." : `No ${filterStatus} tickets.`}

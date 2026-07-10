@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { Skeleton } from "@/components/ui/Skeleton";
 import ActionMenu from "@/components/ui/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -337,7 +338,15 @@ function FolderDetail({ folder, orgId, isAdmin, canEdit, onBack, onFolderRenamed
 
       {/* Items card grid */}
       {loading ? (
-        <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", padding: 40 }}>Loading…</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16, padding: "8px 0" }}>
+          {[0,1,2,3,4,5].map((i) => (
+            <div key={i} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <Skeleton width={40} height={40} borderRadius={8} />
+              <Skeleton width="70%" height={13} />
+              <Skeleton width="50%" height={11} />
+            </div>
+          ))}
+        </div>
       ) : items.length === 0 ? (
         <div style={{ ...S.emptyBox }}>
           <FolderIcon size={28} color="#d1d5db" />

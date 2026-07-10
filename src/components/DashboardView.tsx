@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { SkeletonCard, Skeleton } from "@/components/ui/Skeleton";
 import { computeVoiceStats, formatVoiceDuration, type VoiceStats } from "@/lib/voice/stats";
 import { EMPTY_VALUE } from "@/lib/datetime";
 
@@ -844,8 +845,25 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
 
   if (loading) {
     return (
-      <div style={{ padding: "60px 32px", textAlign: "center", color: "#9ca3af", fontSize: 14 }}>
-        Loading dashboard…
+      <div style={{ padding: "32px 40px", maxWidth: 1200, margin: "0 auto" }}>
+        <Skeleton width={200} height={28} style={{ marginBottom: 8 }} />
+        <Skeleton width={320} height={16} style={{ marginBottom: 32 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+          {[0,1,2,3].map((i) => <SkeletonCard key={i} />)}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 16 }}>
+          {[0,1].map((i) => (
+            <div key={i} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+              <Skeleton width="40%" height={14} />
+              <Skeleton width="100%" height={80} borderRadius={8} />
+              <Skeleton width="60%" height={12} />
+            </div>
+          ))}
+        </div>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+          <Skeleton width="30%" height={14} />
+          <Skeleton width="100%" height={120} borderRadius={8} />
+        </div>
       </div>
     );
   }
