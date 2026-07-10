@@ -17,8 +17,6 @@ import {
 
 type Platform = "LinkedIn" | "Instagram" | "X" | "TikTok" | "Facebook" | "YouTube";
 type PostStatus = "pending" | "approved" | "changes_requested";
-type CalendarAction = "view" | "create" | "edit";
-
 type CalPost = {
   id: string;
   org_id: string | null;
@@ -643,9 +641,8 @@ function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }
 
 // ── Month Grid View ───────────────────────────────────────────────────────────
 
-function MonthGrid({ year, month, posts, isAdmin, actionMode, onDayClick, onPostClick }: {
+function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
-  actionMode: CalendarAction;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
@@ -683,16 +680,8 @@ function MonthGrid({ year, month, posts, isAdmin, actionMode, onDayClick, onPost
               style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default", position: "relative" }}
               onClick={() => {
                 if (!cell.dateStr || !cell.isCurrentMonth) return;
-                if (isAdmin && actionMode === "create") {
-                  onDayClick(cell.dateStr);
-                  return;
-                }
                 if (dayPosts.length > 0) {
-                  if (isAdmin && actionMode === "edit" && dayPosts.length === 1) {
-                    onPostClick(dayPosts[0]);
-                  } else {
-                    setOverflowDate(cell.dateStr);
-                  }
+                  setOverflowDate(cell.dateStr);
                 } else if (isAdmin) {
                   onDayClick(cell.dateStr);
                 }
@@ -765,9 +754,8 @@ function MonthGrid({ year, month, posts, isAdmin, actionMode, onDayClick, onPost
 
 // ── Week View ─────────────────────────────────────────────────────────────────
 
-function WeekGrid({ posts, isAdmin, actionMode, onDayClick, onPostClick }: {
+function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
-  actionMode: CalendarAction;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
@@ -795,16 +783,6 @@ function WeekGrid({ posts, isAdmin, actionMode, onDayClick, onPostClick }: {
             <div
               key={dateStr}
               style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
-              onClick={() => {
-                if (!isAdmin) return;
-                if (actionMode === "create") {
-                  onDayClick(dateStr);
-                  return;
-                }
-                if (actionMode === "edit" && dayPosts.length === 1) {
-                  onPostClick(dayPosts[0]);
-                }
-              }}
             >
               {/* Day header with + button */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8 }}>
@@ -885,10 +863,11 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const [view, setView] = useState<"month" | "week">("month");
   const [posts, setPosts] = useState<CalPost[]>([]);
   const [filterPlatform, setFilterPlatform] = useState<Platform | "all">("all");
-  const [calendarAction, setCalendarAction] = useState<CalendarAction>("view");
   const [showNew, setShowNew] = useState(false);
   const [newDate, setNewDate] = useState(todayYmdEST());
   const [selectedPost, setSelectedPost] = useState<CalPost | null>(null);
+  const [activePost, setActivePost] = useState<CalPost | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     const sb = createClient();
@@ -902,6 +881,24 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
   function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); }
   function nextMonth() { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); }
+  function openPostEditor(post: CalPost) {
+    setActivePost(post);
+    setSelectedPost(post);
+  }
+
+  async function handleDeleteActivePost() {
+    if (!activePost) return;
+    if (!(await confirm({
+      title: "Delete post",
+      message: `Delete "${activePost.title}"? This cannot be undone.`,
+      confirmLabel: "Delete post",
+      destructive: true,
+    }))) return;
+    await createClient().from("cal_posts").delete().eq("id", activePost.id);
+    setPosts(prev => prev.filter((x) => x.id !== activePost.id));
+    if (selectedPost?.id === activePost.id) setSelectedPost(null);
+    setActivePost(null);
+  }
 
   const filtered = posts.filter(p => filterPlatform === "all" || p.platform === filterPlatform);
 
@@ -922,18 +919,6 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
             <option value="all">All platforms</option>
             {PLATFORMS.map(p => <option key={p}>{p}</option>)}
           </select>
-          {isAdmin && (
-            <select
-              value={calendarAction}
-              onChange={e => setCalendarAction(e.target.value as CalendarAction)}
-              style={S.filterSelect}
-              title="Calendar action mode"
-            >
-              <option value="view">View calendar</option>
-              <option value="create">Create mode</option>
-              <option value="edit">Edit mode</option>
-            </select>
-          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={S.viewToggle}>
@@ -947,21 +932,43 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           </div>
           <button onClick={() => { const t = getZonedDateParts(); setYear(t.year); setMonth(t.month); }} style={S.outlineBtn}>Today</button>
           {isAdmin && (
-            <button onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }} style={S.primaryBtn}>
-              <PlusIcon /> New post
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button
+                onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }}
+                style={S.iconBtn}
+                title="Create post"
+              >
+                <PlusIcon />
+              </button>
+              <button
+                onClick={() => activePost && openPostEditor(activePost)}
+                style={{ ...S.iconBtn, opacity: activePost ? 1 : 0.4, cursor: activePost ? "pointer" : "not-allowed" }}
+                disabled={!activePost}
+                title={activePost ? `Edit: ${activePost.title}` : "Select a post first"}
+              >
+                <EditIcon />
+              </button>
+              <button
+                onClick={handleDeleteActivePost}
+                style={{ ...S.iconBtn, color: activePost ? "#dc2626" : "#fca5a5", opacity: activePost ? 1 : 0.5, cursor: activePost ? "pointer" : "not-allowed" }}
+                disabled={!activePost}
+                title={activePost ? `Delete: ${activePost.title}` : "Select a post first"}
+              >
+                <TrashIcon />
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       {/* Calendar */}
       {view === "month"
-        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} actionMode={calendarAction}
+        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
-            onPostClick={p => setSelectedPost(p)} />
-        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} actionMode={calendarAction}
+            onPostClick={p => openPostEditor(p)} />
+        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
-            onPostClick={p => setSelectedPost(p)} />
+            onPostClick={p => openPostEditor(p)} />
       }
 
       {/* Asset Drop */}
@@ -979,8 +986,12 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           isAdmin={isAdmin}
           authorName={authorName}
           onClose={() => setSelectedPost(null)}
-          onUpdated={p => { setPosts(prev => prev.map(x => x.id === p.id ? p : x)); setSelectedPost(p); }}
-          onDeleted={id => { setPosts(prev => prev.filter(x => x.id !== id)); setSelectedPost(null); }}
+          onUpdated={p => { setPosts(prev => prev.map(x => x.id === p.id ? p : x)); setSelectedPost(p); setActivePost(p); }}
+          onDeleted={id => {
+            setPosts(prev => prev.filter(x => x.id !== id));
+            setSelectedPost(null);
+            if (activePost?.id === id) setActivePost(null);
+          }}
         />
       )}
     </div>
@@ -1044,6 +1055,7 @@ const S: Record<string, React.CSSProperties> = {
 
 function XIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>; }
 function PlusIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function EditIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function TrashIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>; }
 function UploadIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>; }
 function SendIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>; }
