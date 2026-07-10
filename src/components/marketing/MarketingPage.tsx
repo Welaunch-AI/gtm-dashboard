@@ -103,6 +103,22 @@ function fmtTime(t: string | null) {
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
 
+// ── PDF Import types (mirror route types) ────────────────────────────────────
+
+type ExtractedPost = {
+  title: string;
+  caption: string | null;
+  platform: string;
+  persona: string | null;
+  scheduled_date: string;
+  scheduled_time: string | null;
+};
+
+type FlaggedPost = {
+  extracted: ExtractedPost;
+  matchedExisting: { id: string; title: string; scheduled_date: string };
+};
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 function Modal({ children, onClose, width = 560 }: { children: React.ReactNode; onClose: () => void; width?: number }) {
@@ -115,6 +131,187 @@ function Modal({ children, onClose, width = 560 }: { children: React.ReactNode; 
     <div style={S.overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ ...S.modal, maxWidth: width }}>{children}</div>
     </div>
+  );
+}
+
+function PdfImportModal({
+  orgId,
+  authorName,
+  onClose,
+  onImported,
+}: {
+  orgId: string | null;
+  authorName: string;
+  onClose: () => void;
+  onImported: (created: CalPost[], flagged: FlaggedPost[]) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleImport() {
+    if (!file) return;
+    setLoading(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      if (orgId) form.append("orgId", orgId);
+      form.append("authorName", authorName);
+
+      const res = await fetch("/api/marketing/import-pdf", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Import failed.");
+        return;
+      }
+      onImported(json.created ?? [], json.flagged ?? []);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={460}>
+      <div style={S.modalHeader}>
+        <h2 style={S.modalTitle}>Import posts from PDF</h2>
+        <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
+      </div>
+      <div style={S.modalBody}>
+        <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
+          Upload a PDF containing your content schedule. Posts will be extracted automatically and added to the calendar. Assets can be attached to each post afterwards.
+        </p>
+        <div
+          style={{
+            border: "2px dashed #e5e7eb", borderRadius: 10, padding: "28px 20px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+            background: file ? "#f0fdf4" : "#fafafa", cursor: "pointer",
+            transition: "all 0.15s",
+          }}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => {
+            e.preventDefault();
+            const dropped = e.dataTransfer.files[0];
+            if (dropped?.type === "application/pdf") setFile(dropped);
+          }}
+        >
+          <UploadIcon />
+          {file ? (
+            <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>{file.name}</span>
+          ) : (
+            <>
+              <span style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>Click to choose a PDF, or drag &amp; drop</span>
+              <span style={{ fontSize: 12, color: "#9ca3af" }}>Only .pdf files are supported</span>
+            </>
+          )}
+          <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: "none" }}
+            onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        </div>
+        {error && <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>{error}</p>}
+      </div>
+      <div style={S.modalFooter}>
+        <button onClick={onClose} style={S.cancelBtn}>Cancel</button>
+        <button onClick={handleImport} disabled={!file || loading} style={{ ...S.primaryBtn, opacity: (!file || loading) ? 0.6 : 1 }}>
+          {loading ? "Importing…" : "Import"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function FlaggedReviewPanel({
+  flagged,
+  orgId,
+  authorName,
+  onCreateAnyway,
+  onDiscard,
+  onClose,
+}: {
+  flagged: FlaggedPost[];
+  orgId: string | null;
+  authorName: string;
+  onCreateAnyway: (post: CalPost) => void;
+  onDiscard: (idx: number) => void;
+  onClose: () => void;
+}) {
+  const [creating, setCreating] = useState<number | null>(null);
+  const sb = createClient();
+
+  async function handleCreateAnyway(item: FlaggedPost, idx: number) {
+    setCreating(idx);
+    try {
+      const { data } = await sb.from("cal_posts").insert({
+        org_id: orgId ?? null,
+        title: item.extracted.title,
+        caption: item.extracted.caption ?? null,
+        platform: item.extracted.platform ?? "LinkedIn",
+        persona: item.extracted.persona ?? null,
+        scheduled_date: item.extracted.scheduled_date,
+        scheduled_time: item.extracted.scheduled_time ?? null,
+        status: "pending",
+        created_by: authorName,
+      }).select("*").single();
+      if (data) onCreateAnyway(data as CalPost);
+      onDiscard(idx);
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} width={580}>
+      <div style={S.modalHeader}>
+        <h2 style={S.modalTitle}>Possible duplicates — review required</h2>
+        <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
+      </div>
+      <div style={{ ...S.modalBody, gap: 10 }}>
+        <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
+          These posts were not auto-created because a post with a very similar title already exists on the same date. Review each one and decide.
+        </p>
+        {flagged.map((item, idx) => (
+          <div key={idx} style={{
+            border: "1px solid #fde68a", borderRadius: 10, padding: "14px 16px",
+            background: "#fffbeb", display: "flex", flexDirection: "column", gap: 8,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", margin: 0 }}>{item.extracted.title}</p>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "3px 0 0" }}>
+                  {item.extracted.platform} · {item.extracted.scheduled_date}{item.extracted.scheduled_time ? ` at ${item.extracted.scheduled_time}` : ""}
+                </p>
+              </div>
+            </div>
+            <div style={{ background: "#fef9c3", borderRadius: 6, padding: "8px 10px" }}>
+              <p style={{ fontSize: 11.5, color: "#78350f", fontWeight: 600, margin: "0 0 2px" }}>Matches existing post:</p>
+              <p style={{ fontSize: 12, color: "#92400e", margin: 0 }}>{item.matchedExisting.title} ({item.matchedExisting.scheduled_date})</p>
+            </div>
+            {item.extracted.caption && (
+              <p style={{ fontSize: 12, color: "#374151", margin: 0, borderTop: "1px solid #fde68a", paddingTop: 8 }}>
+                {item.extracted.caption.slice(0, 200)}{item.extracted.caption.length > 200 ? "…" : ""}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => onDiscard(idx)} style={S.cancelBtn}>Discard</button>
+              <button
+                onClick={() => handleCreateAnyway(item, idx)}
+                disabled={creating === idx}
+                style={{ ...S.primaryBtn, fontSize: 12.5 }}
+              >
+                {creating === idx ? "Creating…" : "Create anyway"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={S.modalFooter}>
+        <button onClick={onClose} style={S.primaryBtn}>Done</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -923,6 +1120,10 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [newDate, setNewDate] = useState(todayYmdEST());
   const [selectedPost, setSelectedPost] = useState<CalPost | null>(null);
+  const [showPdfImport, setShowPdfImport] = useState(false);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [flaggedPosts, setFlaggedPosts] = useState<FlaggedPost[]>([]);
+  const [showFlagged, setShowFlagged] = useState(false);
   const confirm = useConfirm();
 
   const platformStoreKey = `marketing-platforms-${orgId ?? "admin"}`;
@@ -1043,12 +1244,36 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           </div>
           <button onClick={() => { const t = getZonedDateParts(); setYear(t.year); setMonth(t.month); }} style={S.outlineBtn}>Today</button>
           {isAdmin && (
+            <button onClick={() => setShowPdfImport(true)} style={S.outlineBtn} title="Import posts from PDF">
+              <PdfIcon /> Import PDF
+            </button>
+          )}
+          {isAdmin && (
             <button onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }} style={S.primaryBtn}>
               <PlusIcon /> New post
             </button>
           )}
         </div>
       </div>
+
+      {/* PDF import result banner */}
+      {importSummary && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10,
+          padding: "12px 16px", gap: 10,
+        }}>
+          <span style={{ fontSize: 13, color: "#15803d", fontWeight: 500 }}>{importSummary}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {flaggedPosts.length > 0 && (
+              <button onClick={() => setShowFlagged(true)} style={{ ...S.outlineBtn, borderColor: "#fbbf24", color: "#92400e", background: "#fffbeb", padding: "5px 12px", fontSize: 12.5 }}>
+                Review {flaggedPosts.length} duplicate{flaggedPosts.length > 1 ? "s" : ""}
+              </button>
+            )}
+            <button onClick={() => setImportSummary(null)} style={S.iconBtn}><XIcon /></button>
+          </div>
+        </div>
+      )}
 
       {/* Calendar */}
       {view === "month"
@@ -1088,6 +1313,32 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           onCreate={createPlatform}
           onRename={renamePlatform}
           onDelete={deletePlatform}
+        />
+      )}
+      {showPdfImport && (
+        <PdfImportModal
+          orgId={orgId}
+          authorName={authorName}
+          onClose={() => setShowPdfImport(false)}
+          onImported={(created, flagged) => {
+            if (created.length > 0) {
+              setPosts(prev => [...prev, ...created]);
+            }
+            setFlaggedPosts(flagged);
+            const summary = `${created.length} post${created.length !== 1 ? "s" : ""} added to the calendar.${flagged.length > 0 ? ` ${flagged.length} possible duplicate${flagged.length > 1 ? "s" : ""} need${flagged.length === 1 ? "s" : ""} your review.` : ""}`;
+            setImportSummary(summary);
+            if (flagged.length > 0) setShowFlagged(true);
+          }}
+        />
+      )}
+      {showFlagged && flaggedPosts.length > 0 && (
+        <FlaggedReviewPanel
+          flagged={flaggedPosts}
+          orgId={orgId}
+          authorName={authorName}
+          onCreateAnyway={post => setPosts(prev => [...prev, post])}
+          onDiscard={idx => setFlaggedPosts(prev => prev.filter((_, i) => i !== idx))}
+          onClose={() => setShowFlagged(false)}
         />
       )}
     </div>
@@ -1158,3 +1409,4 @@ function SendIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fil
 function FileIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>; }
 function DownloadIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
 function UploadSmIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>; }
+function PdfIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><polyline points="9 9 10 9"/></svg>; }
