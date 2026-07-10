@@ -317,6 +317,8 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filterOutcome, setFilterOutcome] = useState<string>("All outcomes");
+  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
+  const [filterDateTo, setFilterDateTo] = useState<string>("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const hasFetched = useRef(false);
 
@@ -352,9 +354,16 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
   const { totalCalls, meetingsBooked, qualified, avgDurationSecs: avgDuration } = computeVoiceStats(conversations);
 
   // ── Filter ─────────────────────────────────────────────────────────────────
-  const filtered = filterOutcome === "All outcomes"
-    ? conversations
-    : conversations.filter((c) => resolveOutcome(c) === filterOutcome);
+  const fromMs = filterDateFrom ? new Date(filterDateFrom + "T00:00:00").getTime() : null;
+  const toMs = filterDateTo ? new Date(filterDateTo + "T23:59:59").getTime() : null;
+
+  const filtered = conversations.filter((c) => {
+    if (filterOutcome !== "All outcomes" && resolveOutcome(c) !== filterOutcome) return false;
+    const callMs = c.start_time_unix_secs * 1000;
+    if (fromMs !== null && callMs < fromMs) return false;
+    if (toMs !== null && callMs > toMs) return false;
+    return true;
+  });
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -399,7 +408,7 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
         display: "flex", alignItems: "center", justifyContent: "space-between",
         marginBottom: 16, gap: 12,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <select
             value={filterOutcome}
             onChange={(e) => setFilterOutcome(e.target.value)}
@@ -411,6 +420,45 @@ export default function VoiceAgentPage({ agentId, orgId, isAdmin }: Props) {
             <option>All outcomes</option>
             {OUTCOME_OPTIONS.map((o) => <option key={o}>{o}</option>)}
           </select>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label style={{ fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>From</label>
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              style={{
+                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
+                fontSize: 13, background: "#fff", color: "#374151", cursor: "pointer",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label style={{ fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>To</label>
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              style={{
+                padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db",
+                fontSize: 13, background: "#fff", color: "#374151", cursor: "pointer",
+              }}
+            />
+          </div>
+
+          {(filterDateFrom || filterDateTo) && (
+            <button
+              onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); }}
+              style={{
+                padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb",
+                background: "#f9fafb", cursor: "pointer", fontSize: 12, color: "#6b7280",
+              }}
+            >
+              Clear dates
+            </button>
+          )}
+
           <span style={{ fontSize: 14, color: "#9ca3af" }}>{filtered.length} calls</span>
         </div>
         <button

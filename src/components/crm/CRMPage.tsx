@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { logActivity } from "@/lib/logActivity";
-import { EMPTY_VALUE, formatDateEST, formatDateTimeEST } from "@/lib/datetime";
+import { EMPTY_VALUE, formatDateEST, formatDateTimeEST, formatDateTimeOrdinalEST, cleanScheduledLabel } from "@/lib/datetime";
 
 // ─── Custom field types ───────────────────────────────────────────────────────
 
@@ -148,7 +148,12 @@ function fmtDate(iso: string | null) {
 }
 function fmtDateTime(iso: string | null) {
   if (!iso) return EMPTY_VALUE;
-  return formatDateTimeEST(iso);
+  return formatDateTimeOrdinalEST(iso);
+}
+function fmtScheduledLabel(label: string | null, iso: string | null): string {
+  if (label) return cleanScheduledLabel(label);
+  if (!iso) return EMPTY_VALUE;
+  return formatDateTimeOrdinalEST(iso);
 }
 
 function StatusBadge({ value }: { value: string | null }) {
@@ -184,7 +189,7 @@ function cellValue(contact: Contact, col: ColDef): React.ReactNode {
   if (col.key === "tags") return <TagChips tags={contact.tags} />;
   if (col.key === "last_activity_at") return <span style={{ fontSize: 13, color: "#6b7280" }}>{fmtDate(contact.last_activity_at)}</span>;
   if (col.key === "scheduled_at") return <span style={{ fontSize: 13 }}>{fmtDateTime(contact.scheduled_at)}</span>;
-  if (col.key === "scheduled_label") return <span style={{ fontSize: 13, whiteSpace: "pre-line" }}>{contact.scheduled_label || fmtDateTime(contact.scheduled_at)}</span>;
+  if (col.key === "scheduled_label") return <span style={{ fontSize: 13, whiteSpace: "pre-line" }}>{fmtScheduledLabel(contact.scheduled_label, contact.scheduled_at)}</span>;
   if (col.key === "comments" || col.key === "remarks" || col.key === "ai_memory" || col.key === "campaign") {
     const text = String(val ?? "");
     if (!text) return <span style={{ color: "#d1d5db", fontSize: 13 }}>{EMPTY_VALUE}</span>;
@@ -655,6 +660,8 @@ function ContactDetail({
   const [newNote, setNewNote] = useState("");
   const [posting, setPosting] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [promoting, setPromoting] = useState(false);
+  const [promoteSuccess, setPromoteSuccess] = useState(false);
   const notesEndRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
 
@@ -693,6 +700,36 @@ function ContactDetail({
     onClose();
   }
 
+  async function handlePromoteToDemo() {
+    if (!(await confirm({
+      title: "Promote to Demo Tracker",
+      message: `Create a demo record for "${contact.company || contact.contact_name || "this contact"}" in the Demo Tracker?`,
+      confirmLabel: "Promote",
+      destructive: false,
+    }))) return;
+    setPromoting(true);
+    const sb = createClient();
+    await sb.from("crm_contacts").insert({
+      org_id: contact.org_id,
+      record_type: "demo",
+      company: contact.company,
+      contact_name: contact.contact_name,
+      phone: contact.phone,
+      email: contact.email,
+      status: "New",
+      lead_source: contact.lead_source,
+      tags: contact.tags,
+      industry: contact.industry,
+      deal_size: contact.deal_size,
+      remarks: contact.remarks,
+      campaign: contact.campaign,
+      updated_at: new Date().toISOString(),
+    });
+    setPromoting(false);
+    setPromoteSuccess(true);
+    setTimeout(() => setPromoteSuccess(false), 3000);
+  }
+
   const sc = STATUS_COLORS[contact.status ?? ""] ?? { bg: "#f3f4f6", color: "#6b7280" };
 
   return (
@@ -721,8 +758,25 @@ function ContactDetail({
                 {contact.email && <span style={{ fontSize: 13, color: "#2563eb" }}>{contact.email}</span>}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {isAdmin && <button onClick={() => setEditing(true)} style={SmBtn}>Edit</button>}
+              {isAdmin && mode === "contacts" && (
+                <button
+                  onClick={handlePromoteToDemo}
+                  disabled={promoting}
+                  style={{
+                    ...SmBtn,
+                    color: promoteSuccess ? "#15803d" : "#6d28d9",
+                    borderColor: promoteSuccess ? "#bbf7d0" : "#ddd6fe",
+                    background: promoteSuccess ? "#f0fdf4" : "#fff",
+                    opacity: promoting ? 0.6 : 1,
+                    cursor: promoting ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {promoteSuccess ? "Promoted!" : promoting ? "Promoting..." : "Promote to Demo"}
+                </button>
+              )}
               {isAdmin && <button onClick={handleDelete} style={{ ...SmBtn, color: "#dc2626", borderColor: "#fecaca" }}>Delete</button>}
               <button onClick={onClose} style={ClBtn}><X /></button>
             </div>
@@ -739,7 +793,7 @@ function ContactDetail({
                 ["Deal size", contact.deal_size],
                 ["Last activity", fmtDate(contact.last_activity_at)],
                 ...(mode === "demo" ? [
-                  ["Scheduled On", contact.scheduled_label || fmtDateTime(contact.scheduled_at)],
+                  ["Scheduled On", fmtScheduledLabel(contact.scheduled_label, contact.scheduled_at)],
                   ["Campaign", contact.campaign],
                   ["Status", contact.demo_status],
                   ["Call taken by", contact.call_taken_by],

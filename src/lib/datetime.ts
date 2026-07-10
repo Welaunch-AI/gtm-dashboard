@@ -106,6 +106,52 @@ export function addDaysYmd(ymd: string, days: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(anchor);
 }
 
+/** Returns ordinal suffix for a number: 1 → "st", 2 → "nd", 3 → "rd", 4 → "th" */
+function ordinalSuffix(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return "th";
+  switch (n % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+}
+
+/**
+ * Formats a date/time in the style: "3:33 AM · 9th July 2026 (EDT)"
+ * Always in America/New_York timezone.
+ */
+export function formatDateTimeOrdinalEST(input: string | Date | number): string {
+  const d = toDate(input);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIMEZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZoneName: "short",
+  }).formatToParts(d);
+  const p = Object.fromEntries(parts.map(pt => [pt.type, pt.value]));
+  const day = parseInt(p.day);
+  const suffix = ordinalSuffix(day);
+  const time = `${p.hour}:${p.minute} ${p.dayPeriod?.toUpperCase() ?? ""}`.trim();
+  return `${time} · ${day}${suffix} ${p.month} ${p.year} (${p.timeZoneName ?? "ET"})`;
+}
+
+/**
+ * Cleans garbled UTF-8 arrow characters (→ misread as â†') from manually-entered text.
+ */
+export function cleanScheduledLabel(label: string): string {
+  return label
+    .replace(/â†[›''‚Ž°Š]/g, "→")
+    .replace(/â€[""]/g, '"')
+    .replace(/â€˜/g, "'")
+    .replace(/â€™/g, "'");
+}
+
 export function startOfWeekYmdEST(): string {
   const today = todayYmdEST();
   const { weekday } = getZonedDateParts();
