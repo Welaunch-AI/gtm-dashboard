@@ -142,12 +142,21 @@ export function formatDateTimeOrdinalEST(input: string | Date | number): string 
 }
 
 /**
- * Cleans garbled UTF-8 arrow characters (→ misread as â†') from manually-entered text.
+ * Cleans garbled UTF-8 characters that result from multi-byte Unicode being
+ * mis-decoded as Latin-1/Windows-1252. Covers arrows, quotes, dashes.
  */
 export function cleanScheduledLabel(label: string): string {
   return label
-    .replace(/â†[›''‚Ž°Š]/g, "→")
-    .replace(/â€[""]/g, '"')
+    // → (U+2192) mis-decoded: â† + any char
+    .replace(/â†./g, "→")
+    // – (en dash, U+2013) mis-decoded
+    .replace(/â€"/g, "-")
+    // — (em dash, U+2014) mis-decoded
+    .replace(/â€"/g, "-")
+    // " " (curly quotes) mis-decoded
+    .replace(/â€œ/g, '"')
+    .replace(/â€/g, '"')
+    // ' ' (curly apostrophes) mis-decoded
     .replace(/â€˜/g, "'")
     .replace(/â€™/g, "'");
 }
