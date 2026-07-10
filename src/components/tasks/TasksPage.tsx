@@ -327,6 +327,52 @@ function TaskDetailModal({ task, authorName, onClose, onUpdated, onDeleted }: { 
 
 // ── Goals Sidebar ─────────────────────────────────────────────────────────────
 
+function GoalGroup({
+  period,
+  list,
+  newVal,
+  setNew,
+  onAddGoal,
+  onToggleGoal,
+  onDeleteGoal,
+}: {
+  period: "week" | "month";
+  list: Goal[];
+  newVal: string;
+  setNew: (v: string) => void;
+  onAddGoal: (period: "week" | "month") => void;
+  onToggleGoal: (g: Goal) => void;
+  onDeleteGoal: (id: string) => void;
+}) {
+  const done = list.filter((g) => g.completed).length;
+  return (
+    <div style={S.goalGroup}>
+      <div style={S.goalGroupHeader}>
+        <span style={S.goalGroupTitle}>{period === "week" ? "This Week's Goals" : "This Month's Goals"}</span>
+        <span style={S.goalCount}>{done} / {list.length} done</span>
+      </div>
+      {list.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", padding: "6px 0" }}>No goals yet.</p>}
+      {list.map(g => (
+        <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 0" }}>
+          <input type="checkbox" checked={g.completed} onChange={() => onToggleGoal(g)} style={{ cursor: "pointer", accentColor: "#111827" }} />
+          <span style={{ flex: 1, fontSize: 13, color: g.completed ? "#9ca3af" : "#374151", textDecoration: g.completed ? "line-through" : "none" }}>{g.title}</span>
+          <button onClick={() => onDeleteGoal(g.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "#d1d5db" }}><XIcon size={11} /></button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <input
+          value={newVal}
+          onChange={e => setNew(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && onAddGoal(period)}
+          placeholder="+ Add goal"
+          style={{ ...S.input, fontSize: 12.5, padding: "5px 8px", flex: 1 }}
+        />
+        {newVal && <button onClick={() => onAddGoal(period)} style={{ ...S.primaryBtn, padding: "5px 10px", fontSize: 12 }}>Add</button>}
+      </div>
+    </div>
+  );
+}
+
 function GoalsSidebar({ orgId }: { orgId: string | null }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [newWeek, setNewWeek] = useState("");
@@ -362,38 +408,30 @@ function GoalsSidebar({ orgId }: { orgId: string | null }) {
   const week = goals.filter(g => g.period === "week");
   const month = goals.filter(g => g.period === "month");
 
-  function GoalGroup({ period, list, newVal, setNew }: { period: "week" | "month"; list: Goal[]; newVal: string; setNew: (v: string) => void }) {
-    const done = list.filter(g => g.completed).length;
-    return (
-      <div style={S.goalGroup}>
-        <div style={S.goalGroupHeader}>
-          <span style={S.goalGroupTitle}>{period === "week" ? "This Week's Goals" : "This Month's Goals"}</span>
-          <span style={S.goalCount}>{done} / {list.length} done</span>
-        </div>
-        {list.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", padding: "6px 0" }}>No goals yet.</p>}
-        {list.map(g => (
-          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 0" }}>
-            <input type="checkbox" checked={g.completed} onChange={() => toggleGoal(g)} style={{ cursor: "pointer", accentColor: "#111827" }} />
-            <span style={{ flex: 1, fontSize: 13, color: g.completed ? "#9ca3af" : "#374151", textDecoration: g.completed ? "line-through" : "none" }}>{g.title}</span>
-            <button onClick={() => deleteGoal(g.id)} style={{ border: "none", background: "none", cursor: "pointer", color: "#d1d5db" }}><XIcon size={11} /></button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <input value={newVal} onChange={e => setNew(e.target.value)} onKeyDown={e => e.key === "Enter" && addGoal(period)} placeholder="+ Add goal" style={{ ...S.input, fontSize: 12.5, padding: "5px 8px", flex: 1 }} />
-          {newVal && <button onClick={() => addGoal(period)} style={{ ...S.primaryBtn, padding: "5px 10px", fontSize: 12 }}>Add</button>}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <aside style={S.goalsSidebar}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
         <TargetIcon />
         <span style={{ fontSize: 13.5, fontWeight: 700, color: "#111827" }}>Goals</span>
       </div>
-      <GoalGroup period="week" list={week} newVal={newWeek} setNew={setNewWeek} />
-      <GoalGroup period="month" list={month} newVal={newMonth} setNew={setNewMonth} />
+      <GoalGroup
+        period="week"
+        list={week}
+        newVal={newWeek}
+        setNew={setNewWeek}
+        onAddGoal={addGoal}
+        onToggleGoal={toggleGoal}
+        onDeleteGoal={deleteGoal}
+      />
+      <GoalGroup
+        period="month"
+        list={month}
+        newVal={newMonth}
+        setNew={setNewMonth}
+        onAddGoal={addGoal}
+        onToggleGoal={toggleGoal}
+        onDeleteGoal={deleteGoal}
+      />
     </aside>
   );
 }
@@ -566,8 +604,8 @@ export default function TasksPage({ orgId, authorName, userId, userRole, orgName
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const S: Record<string, React.CSSProperties> = {
-  pageWrap: { display: "flex", gap: 0, padding: "28px 28px 28px 28px", height: "100%", overflow: "hidden" },
-  mainCol: { flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0, overflow: "auto", paddingRight: 24 },
+  pageWrap: { display: "flex", gap: 10, padding: "28px 28px 28px 28px", height: "100%", overflow: "hidden" },
+  mainCol: { flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0, overflow: "auto", paddingRight: 10 },
   pageHeader: { display: "flex", alignItems: "flex-start", justifyContent: "space-between" },
   pageTitle: { fontSize: 22, fontWeight: 700, color: "#111827", letterSpacing: "-0.4px" },
   pageSubtitle: { fontSize: 13, color: "#6b7280", marginTop: 3 },
@@ -589,8 +627,8 @@ const S: Record<string, React.CSSProperties> = {
   boardColHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   boardCard: { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.04)", transition: "box-shadow 0.1s" },
   boardAddBtn: { border: "none", background: "none", color: "#9ca3af", fontSize: 13, cursor: "pointer", padding: "4px 0", textAlign: "left" },
-  goalsSidebar: { width: 240, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16, paddingLeft: 0, overflowY: "auto" },
-  goalGroup: { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "14px 14px" },
+  goalsSidebar: { width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 18, paddingLeft: 0, marginLeft: -6, overflowY: "auto" },
+  goalGroup: { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 16px" },
   goalGroupHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   goalGroupTitle: { fontSize: 13, fontWeight: 600, color: "#374151" },
   goalCount: { fontSize: 11.5, color: "#9ca3af" },
