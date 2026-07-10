@@ -195,7 +195,13 @@ export function cleanScheduledLabel(label: string): string {
       i++;
     }
   }
-  return result;
+  // Remove lines that reference non-Eastern timezones (PDT, PST, CDT, CST, MDT, MST)
+  // The agency sometimes enters duplicate lines in Pacific/other timezones — keep only Eastern.
+  const lines = result.split("\n");
+  const easternOnly = lines.filter(
+    (line) => !/\b(PDT|PST|CDT|CST|MDT|MST|AKDT|AKST|HDT|HST)\b/i.test(line)
+  );
+  return (easternOnly.length > 0 ? easternOnly : lines).join("\n").trim();
 }
 
 // Reverse map: Unicode code point → Windows-1252 byte (for the non-standard 0x80–0x9F range)
