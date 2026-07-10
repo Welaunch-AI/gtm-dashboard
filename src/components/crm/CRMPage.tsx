@@ -6,6 +6,19 @@ import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { logActivity } from "@/lib/logActivity";
 import { EMPTY_VALUE, formatDateEST, formatDateTimeEST } from "@/lib/datetime";
 
+// ─── Custom field types ───────────────────────────────────────────────────────
+
+export interface CustomFieldDef {
+  id: string;
+  org_id: string | null;
+  mode: "demo" | "contacts";
+  name: string;
+  field_type: "text" | "textarea" | "number" | "select" | "date" | "checkbox";
+  options: string[];
+  position: number;
+  created_at: string;
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export type CRMMode = "demo" | "contacts";
@@ -41,6 +54,7 @@ interface Contact {
   id: string;
   org_id: string | null;
   record_type: string;
+  custom_fields: Record<string, unknown>;
   company: string | null;
   contact_name: string | null;
   phone: string | null;
@@ -86,6 +100,7 @@ interface Props {
   userName: string;
   userRole: string;
   userId: string;
+  customFieldDefs?: CustomFieldDef[];
 }
 
 // ─── Column definitions ───────────────────────────────────────────────────────
@@ -179,14 +194,215 @@ function cellValue(contact: Contact, col: ColDef): React.ReactNode {
   return <span style={{ fontSize: 13, color: "#374151" }}>{String(val)}</span>;
 }
 
+// ─── Custom Field Manager ─────────────────────────────────────────────────────
+
+const CF_TYPES: { value: CustomFieldDef["field_type"]; label: string }[] = [
+  { value: "text",     label: "Short text" },
+  { value: "textarea", label: "Long text" },
+  { value: "number",   label: "Number" },
+  { value: "select",   label: "Dropdown" },
+  { value: "date",     label: "Date" },
+  { value: "checkbox", label: "Checkbox (Yes/No)" },
+];
+
+function CustomFieldManager({ mode, orgId, defs, onClose, onChanged }: {
+  mode: CRMMode; orgId: string | null;
+  defs: CustomFieldDef[];
+  onClose: () => void;
+  onChanged: (defs: CustomFieldDef[]) => void;
+}) {
+  const confirm = useConfirm();
+  const [list, setList] = useState<CustomFieldDef[]>(defs);
+  const [editing, setEditing] = useState<CustomFieldDef | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const blank = (): Omit<CustomFieldDef, "id" | "created_at"> => ({
+    org_id: orgId, mode, name: "", field_type: "text", options: [], position: list.length,
+  });
+  const [form, setForm] = useState(blank());
+  const [optionInput, setOptionInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function startCreate() {
+    setForm(blank());
+    setOptionInput("");
+    setEditing(null);
+    setCreating(true);
+    setError("");
+  }
+
+  function startEdit(def: CustomFieldDef) {
+    setForm({ org_id: def.org_id, mode: def.mode, name: def.name, field_type: def.field_type, options: [...def.options], position: def.position });
+    setOptionInput("");
+    setEditing(def);
+    setCreating(true);
+    setError("");
+  }
+
+  async function save() {
+    if (!form.name.trim()) { setError("Field name is required."); return; }
+    setSaving(true);
+    const sb = createClient();
+    if (editing) {
+      const { data, error: e } = await sb.from("crm_custom_field_defs")
+        .update({ name: form.name.trim(), field_type: form.field_type, options: form.options, position: form.position })
+        .eq("id", editing.id).select().single();
+      if (e) { setError(e.message); setSaving(false); return; }
+      const next = list.map(d => d.id === editing.id ? data as CustomFieldDef : d);
+      setList(next); onChanged(next);
+    } else {
+      const { data, error: e } = await sb.from("crm_custom_field_defs")
+        .insert({ org_id: orgId, mode, name: form.name.trim(), field_type: form.field_type, options: form.options, position: form.position })
+        .select().single();
+      if (e) { setError(e.message); setSaving(false); return; }
+      const next = [...list, data as CustomFieldDef];
+      setList(next); onChanged(next);
+    }
+    setSaving(false);
+    setCreating(false);
+    setEditing(null);
+  }
+
+  async function deleteDef(def: CustomFieldDef) {
+    if (!(await confirm({ title: "Delete field", message: `Delete "${def.name}"? Existing values will be lost.`, confirmLabel: "Delete field", destructive: true }))) return;
+    await createClient().from("crm_custom_field_defs").delete().eq("id", def.id);
+    const next = list.filter(d => d.id !== def.id);
+    setList(next); onChanged(next);
+  }
+
+  return (
+    <div style={Ov}>
+      <div style={{ ...Md, maxWidth: 560, maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        <div style={MdHd}>
+          <h2 style={MdTt}>Custom fields - {mode === "demo" ? "Demo Tracker" : "Contacts"}</h2>
+          <button onClick={onClose} style={ClBtn}><X /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {!creating ? (
+            <>
+              <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
+                Custom fields appear in the Add/Edit form and contact detail for every {mode === "demo" ? "demo" : "contact"} record.
+              </p>
+              {list.length === 0 && (
+                <div style={{ padding: "28px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                  No custom fields yet. Click "New field" to add one.
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {list.sort((a, b) => a.position - b.position).map(def => (
+                  <div key={def.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", margin: "0 0 2px" }}>{def.name}</p>
+                      <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
+                        {CF_TYPES.find(t => t.value === def.field_type)?.label ?? def.field_type}
+                        {def.field_type === "select" && def.options.length > 0 && ` · ${def.options.join(", ")}`}
+                      </p>
+                    </div>
+                    <button onClick={() => startEdit(def)} style={{ ...SmBtn, fontSize: 12 }}>Edit</button>
+                    <button onClick={() => deleteDef(def)} style={{ ...SmBtn, fontSize: 12, color: "#dc2626", borderColor: "#fecaca" }}>Delete</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={startCreate} style={{ ...CfBtn, alignSelf: "flex-start", display: "flex", gap: 6, alignItems: "center" }}>
+                <Plus /> New field
+              </button>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <button onClick={() => setCreating(false)} style={{ ...SmBtn, alignSelf: "flex-start", fontSize: 12 }}>← Back</button>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", margin: 0 }}>
+                {editing ? "Edit field" : "New field"}
+              </h3>
+              <Field label="Field name">
+                <Inp value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="e.g. Budget, Region, Priority…" />
+              </Field>
+              <Field label="Field type">
+                <select value={form.field_type} onChange={e => setForm(f => ({ ...f, field_type: e.target.value as CustomFieldDef["field_type"], options: [] }))} style={Sel}>
+                  {CF_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+              {form.field_type === "select" && (
+                <Field label="Dropdown options">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {form.options.map(opt => (
+                      <span key={opt} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, fontSize: 12, background: "#f3f4f6", border: "1px solid #e5e7eb" }}>
+                        {opt}
+                        <button onClick={() => setForm(f => ({ ...f, options: f.options.filter(o => o !== opt) }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={optionInput} onChange={e => setOptionInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const v = optionInput.trim(); if (v && !form.options.includes(v)) setForm(f => ({ ...f, options: [...f.options, v] })); setOptionInput(""); }}}
+                      placeholder="Type option + Enter" style={{ ...InpSt, flex: 1 }} />
+                    <button onClick={() => { const v = optionInput.trim(); if (v && !form.options.includes(v)) setForm(f => ({ ...f, options: [...f.options, v] })); setOptionInput(""); }} style={SmBtn}>Add</button>
+                  </div>
+                </Field>
+              )}
+              {error && <p style={{ color: "#dc2626", fontSize: 12, margin: 0 }}>{error}</p>}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setCreating(false)} style={CcBtn}>Cancel</button>
+                <button onClick={save} disabled={saving} style={{ ...CfBtn, opacity: saving ? 0.5 : 1 }}>{saving ? "Saving…" : editing ? "Save changes" : "Create field"}</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {!creating && (
+          <div style={{ padding: "12px 24px", borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={onClose} style={CcBtn}>Done</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Custom field input renderer ──────────────────────────────────────────────
+
+function CustomFieldInput({ def, value, onChange }: {
+  def: CustomFieldDef;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const str = value === undefined || value === null ? "" : String(value);
+  if (def.field_type === "checkbox") {
+    return (
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: "#374151" }}>
+        <input type="checkbox" checked={Boolean(value)} onChange={e => onChange(e.target.checked)} style={{ accentColor: "#111827", width: 15, height: 15 }} />
+        {value ? "Yes" : "No"}
+      </label>
+    );
+  }
+  if (def.field_type === "select") {
+    return (
+      <select value={str} onChange={e => onChange(e.target.value)} style={Sel}>
+        <option value="">Select…</option>
+        {def.options.map(o => <option key={o}>{o}</option>)}
+      </select>
+    );
+  }
+  if (def.field_type === "textarea") {
+    return (
+      <textarea value={str} onChange={e => onChange(e.target.value)} rows={3}
+        style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }} />
+    );
+  }
+  if (def.field_type === "date") {
+    return <input type="date" value={str} onChange={e => onChange(e.target.value)} style={InpSt} />;
+  }
+  return <input type={def.field_type === "number" ? "number" : "text"} value={str} onChange={e => onChange(e.target.value)} style={InpSt} />;
+}
+
 // ─── Add/Edit Modal ───────────────────────────────────────────────────────────
 
 function ContactModal({
-  mode, orgId, userId, contact,
+  mode, orgId, userId, contact, customFieldDefs,
   onClose, onSaved,
 }: {
   mode: CRMMode; orgId: string | null; userId: string;
   contact: Contact | null;
+  customFieldDefs: CustomFieldDef[];
   onClose: () => void;
   onSaved: (c: Contact) => void;
 }) {
@@ -211,6 +427,9 @@ function ContactModal({
     tagInput: "",
     tags: contact?.tags ?? [] as string[],
   });
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>(
+    contact?.custom_fields ?? {}
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -246,6 +465,7 @@ function ContactModal({
       campaign: form.campaign.trim() || null,
       call_taken_by: form.call_taken_by.trim() || null,
       ai_memory: form.ai_memory.trim() || null,
+      custom_fields: customValues as Record<string, string | number | boolean | null>,
       updated_at: new Date().toISOString(),
     };
     let result;
@@ -383,6 +603,26 @@ function ContactModal({
             </div>
           )}
 
+          {/* Custom fields */}
+          {customFieldDefs.length > 0 && (
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#9ca3af", textTransform: "uppercase", margin: "0 0 10px" }}>Custom fields</p>
+              <div style={Grid2}>
+                {customFieldDefs.sort((a, b) => a.position - b.position).map(def => (
+                  <div key={def.id} style={def.field_type === "textarea" ? { gridColumn: "1 / -1" } : {}}>
+                    <Field label={def.name}>
+                      <CustomFieldInput
+                        def={def}
+                        value={customValues[def.id]}
+                        onChange={v => setCustomValues(prev => ({ ...prev, [def.id]: v }))}
+                      />
+                    </Field>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && <p style={{ color: "#dc2626", fontSize: 12, margin: 0 }}>{error}</p>}
         </div>
         <div style={{ padding: "12px 24px", borderTop: "1px solid #f3f4f6", display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -399,11 +639,12 @@ function ContactModal({
 // ─── Contact Detail drawer ────────────────────────────────────────────────────
 
 function ContactDetail({
-  contact: initial, mode, isAdmin, userName, userRole, userId,
+  contact: initial, mode, isAdmin, userName, userRole, userId, customFieldDefs,
   onClose, onUpdated, onDelete,
 }: {
   contact: Contact; mode: CRMMode; isAdmin: boolean;
   userName: string; userRole: string; userId: string;
+  customFieldDefs: CustomFieldDef[];
   onClose: () => void;
   onUpdated: (c: Contact) => void;
   onDelete: (id: string) => void;
@@ -460,6 +701,7 @@ function ContactDetail({
         <ContactModal
           mode={mode} orgId={contact.org_id} userId={userId}
           contact={contact}
+          customFieldDefs={customFieldDefs}
           onClose={() => setEditing(false)}
           onSaved={(c) => { setContact(c); onUpdated(c); setEditing(false); }}
         />
@@ -535,6 +777,27 @@ function ContactDetail({
               <div>
                 <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Tags</p>
                 <TagChips tags={contact.tags} />
+              </div>
+            )}
+
+            {/* Custom fields */}
+            {customFieldDefs.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Custom fields</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
+                  {customFieldDefs.sort((a, b) => a.position - b.position).map(def => {
+                    const val = contact.custom_fields?.[def.id];
+                    const display = def.field_type === "checkbox"
+                      ? (val ? "Yes" : "No")
+                      : (val !== undefined && val !== null && val !== "" ? String(val) : EMPTY_VALUE);
+                    return (
+                      <div key={def.id} style={def.field_type === "textarea" ? { gridColumn: "1 / -1" } : {}}>
+                        <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{def.name}</p>
+                        <p style={{ fontSize: 13, color: "#374151", margin: 0, whiteSpace: "pre-line" }}>{display}</p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -876,6 +1139,8 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
   const [view, setView] = useState<"list" | "board">("list");
   const [cols, setCols] = useState<ColDef[]>(() => getDefaultCols(mode));
   const [showColMgr, setShowColMgr] = useState(false);
+  const [showCfMgr, setShowCfMgr] = useState(false);
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("All statuses");
   const [filterTag, setFilterTag] = useState("All tags");
@@ -907,7 +1172,12 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
     if (hasFetched.current) return;
     hasFetched.current = true;
     fetchContacts();
-  }, [fetchContacts]);
+    // Load custom field definitions
+    const sb = createClient();
+    let q = sb.from("crm_custom_field_defs").select("*").eq("mode", mode).order("position");
+    if (orgId) q = (q as typeof q).eq("org_id", orgId); else q = (q as typeof q).is("org_id", null);
+    q.then(({ data }) => setCustomFieldDefs((data ?? []) as CustomFieldDef[]));
+  }, [fetchContacts, mode, orgId]);
 
   // Re-fetch when sort changes
   const prevSort = useRef({ sortKey, sortDir });
@@ -1001,15 +1271,21 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
               </button>
             ))}
           </div>
-          {/* Manage fields */}
+          {/* Manage columns */}
           <div style={{ position: "relative" }} ref={colMgrRef}>
             <button onClick={() => setShowColMgr((p) => !p)} style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center" }}>
-              <ColumnsIcon />Manage fields
+              <ColumnsIcon />Columns
             </button>
             {showColMgr && (
               <ColumnManager cols={cols} onChange={setCols} onClose={() => setShowColMgr(false)} />
             )}
           </div>
+          {/* Custom fields manager (admin only) */}
+          {isAdmin && (
+            <button onClick={() => setShowCfMgr(true)} style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center" }}>
+              <FieldsIcon />Custom fields{customFieldDefs.length > 0 && ` (${customFieldDefs.length})`}
+            </button>
+          )}
           <button onClick={() => setShowImport(true)} style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center" }}>
             <UploadIcon />Import
           </button>
@@ -1138,9 +1414,17 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
       )}
 
       {/* Modals */}
+      {showCfMgr && (
+        <CustomFieldManager
+          mode={mode} orgId={orgId} defs={customFieldDefs}
+          onClose={() => setShowCfMgr(false)}
+          onChanged={setCustomFieldDefs}
+        />
+      )}
       {showAdd && (
         <ContactModal
           mode={mode} orgId={orgId} userId={userId} contact={null}
+          customFieldDefs={customFieldDefs}
           onClose={() => setShowAdd(false)}
           onSaved={(c) => {
             setContacts((p) => [c, ...p]);
@@ -1159,6 +1443,7 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
         <ContactDetail
           contact={selectedContact} mode={mode} isAdmin={isAdmin}
           userName={userName} userRole={userRole} userId={userId}
+          customFieldDefs={customFieldDefs}
           onClose={() => setSelectedContact(null)}
           onUpdated={(c) => {
             setContacts((p) => p.map((x) => x.id === c.id ? c : x));
@@ -1209,5 +1494,6 @@ function SearchIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" f
 function ListIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>; }
 function BoardIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>; }
 function ColumnsIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>; }
+function FieldsIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="14" x2="6" y2="20"/><line x1="18" y1="10" x2="18" y2="20"/></svg>; }
 function UploadIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function DownloadIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }

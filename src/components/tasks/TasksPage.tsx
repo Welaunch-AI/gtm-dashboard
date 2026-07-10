@@ -334,7 +334,7 @@ function GoalsSidebar({ orgId }: { orgId: string | null }) {
   useEffect(() => {
     const sb = createClient();
     const q = sb.from("goals").select("*").order("created_at");
-    (orgId ? q.eq("org_id", orgId) : q).then(({ data }) => setGoals(data ?? []));
+    (orgId ? q.eq("org_id", orgId) : q).then(({ data }) => setGoals((data ?? []) as Goal[]));
   }, [orgId]);
 
   async function addGoal(period: "week" | "month") {
@@ -416,7 +416,7 @@ export default function TasksPage({ orgId, authorName, userId, userRole, orgName
     const q = sb.from("tasks").select("*").order("created_at", { ascending: false });
     if (orgId) q.eq("org_id", orgId);
     const { data } = await q;
-    setTasks(data ?? []);
+    setTasks((data ?? []) as Task[]);
     setLoading(false);
   }, [orgId]);
 
