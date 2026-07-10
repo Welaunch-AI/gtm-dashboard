@@ -15,8 +15,9 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Platform = "LinkedIn" | "Instagram" | "X" | "TikTok" | "Facebook" | "YouTube";
+type Platform = string;
 type PostStatus = "pending" | "approved" | "changes_requested";
+
 type CalPost = {
   id: string;
   org_id: string | null;
@@ -57,9 +58,9 @@ type CalAsset = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PLATFORMS: Platform[] = ["LinkedIn", "Instagram", "X", "TikTok", "Facebook", "YouTube"];
+const DEFAULT_PLATFORMS: Platform[] = ["LinkedIn", "Instagram", "X", "TikTok", "Facebook", "YouTube"];
 
-const PLATFORM_COLORS: Record<Platform, { dot: string; bg: string; text: string }> = {
+const PLATFORM_COLORS: Record<string, { dot: string; bg: string; text: string }> = {
   LinkedIn:  { dot: "#0077b5", bg: "#dbeafe", text: "#1d4ed8" },
   Instagram: { dot: "#e1306c", bg: "#fce7f3", text: "#be185d" },
   X:         { dot: "#000000", bg: "#f3f4f6", text: "#111827" },
@@ -67,6 +68,12 @@ const PLATFORM_COLORS: Record<Platform, { dot: string; bg: string; text: string 
   Facebook:  { dot: "#1877f2", bg: "#dbeafe", text: "#1d4ed8" },
   YouTube:   { dot: "#ff0000", bg: "#fee2e2", text: "#b91c1c" },
 };
+
+const FALLBACK_PLATFORM_COLOR = { dot: "#6b7280", bg: "#f3f4f6", text: "#374151" };
+
+function getPlatformColor(platform: string) {
+  return PLATFORM_COLORS[platform] ?? FALLBACK_PLATFORM_COLOR;
+}
 
 const STATUS_STYLE: Record<PostStatus, { bg: string; color: string; label: string }> = {
   pending:           { bg: "#f3f4f6",  color: "#6b7280", label: "Pending" },
@@ -108,6 +115,99 @@ function Modal({ children, onClose, width = 560 }: { children: React.ReactNode; 
     <div style={S.overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ ...S.modal, maxWidth: width }}>{children}</div>
     </div>
+  );
+}
+
+function PlatformActionModal({
+  mode,
+  platforms,
+  onClose,
+  onCreate,
+  onRename,
+  onDelete,
+}: {
+  mode: "create" | "edit" | "delete";
+  platforms: string[];
+  onClose: () => void;
+  onCreate: (name: string) => Promise<void>;
+  onRename: (from: string, to: string) => Promise<void>;
+  onDelete: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [selected, setSelected] = useState(platforms[0] ?? "");
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit() {
+    try {
+      setSaving(true);
+      setError("");
+      if (mode === "create") {
+        if (!name.trim()) throw new Error("Platform name is required.");
+        await onCreate(name.trim());
+      } else if (mode === "edit") {
+        if (!selected) throw new Error("Select a platform to edit.");
+        if (!newName.trim()) throw new Error("New platform name is required.");
+        await onRename(selected, newName.trim());
+      } else {
+        if (!selected) throw new Error("Select a platform to delete.");
+        await onDelete(selected);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const title = mode === "create" ? "Create platform" : mode === "edit" ? "Edit platform" : "Delete platform";
+  const actionLabel = mode === "create" ? "Create" : mode === "edit" ? "Save" : "Delete";
+
+  return (
+    <Modal onClose={onClose} width={440}>
+      <div style={S.modalHeader}>
+        <h2 style={S.modalTitle}>{title}</h2>
+        <button onClick={onClose} style={S.closeBtn}><XIcon /></button>
+      </div>
+      <div style={S.modalBody}>
+        {mode === "create" && (
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>Platform name</span>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Threads" style={S.input} />
+          </div>
+        )}
+
+        {(mode === "edit" || mode === "delete") && (
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>Select platform</span>
+            <select value={selected} onChange={(e) => setSelected(e.target.value)} style={S.select}>
+              {platforms.length === 0 ? <option value="">No platforms</option> : platforms.map((p) => <option key={p}>{p}</option>)}
+            </select>
+          </div>
+        )}
+
+        {mode === "edit" && (
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>New name</span>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Enter new platform name" style={S.input} />
+          </div>
+        )}
+
+        {error && <p style={{ fontSize: 12, color: "#dc2626" }}>{error}</p>}
+      </div>
+      <div style={S.modalFooter}>
+        <button onClick={onClose} style={S.cancelBtn}>Cancel</button>
+        <button
+          onClick={handleSubmit}
+          disabled={saving}
+          style={mode === "delete" ? S.deleteBtn : S.primaryBtn}
+        >
+          {saving ? "Saving…" : actionLabel}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -238,8 +338,8 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
 
 // ── Post Detail Modal ─────────────────────────────────────────────────────────
 
-function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDeleted }: {
-  post: CalPost; isAdmin: boolean; authorName: string;
+function PostDetailModal({ post, isAdmin, authorName, platforms, onClose, onUpdated, onDeleted }: {
+  post: CalPost; isAdmin: boolean; authorName: string; platforms: string[];
   onClose: () => void; onUpdated: (p: CalPost) => void; onDeleted: (id: string) => void;
 }) {
   const [title, setTitle] = useState(post.title);
@@ -251,6 +351,12 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
   const [fbText, setFbText] = useState("");
   const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
+
+  useEffect(() => {
+    if (platforms.length > 0 && !platforms.includes(platform)) {
+      setPlatform(platforms[0]);
+    }
+  }, [platforms, platform]);
 
   useEffect(() => {
     createClient().from("cal_post_feedback").select("*").eq("post_id", post.id).order("created_at").then(({ data }) => setFeedback((data ?? []) as Feedback[]));
@@ -289,7 +395,7 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
     onClose();
   }
 
-  const pc = PLATFORM_COLORS[platform];
+  const pc = getPlatformColor(platform);
   const ss = STATUS_STYLE[status];
 
   return (
@@ -326,21 +432,17 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
           />
         </div>
 
-        {/* Platform + Date + Time row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+        {/* Platform + Date row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div style={S.fieldGroup}>
             <span style={S.fieldLabel}>Platform</span>
             <select value={platform} onChange={e => { setPlatform(e.target.value as Platform); save({ platform: e.target.value as Platform }); }} style={S.select} disabled={!isAdmin}>
-              {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+              {platforms.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
           <div style={S.fieldGroup}>
-            <span style={S.fieldLabel}>Date</span>
+            <span style={S.fieldLabel}>Scheduled for</span>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} onBlur={() => date !== post.scheduled_date && save({ scheduled_date: date })} style={S.input} readOnly={!isAdmin} />
-          </div>
-          <div style={S.fieldGroup}>
-            <span style={S.fieldLabel}>Time (EST)</span>
-            <input type="time" value={post.scheduled_time ?? ""} onChange={e => isAdmin && save({ scheduled_time: e.target.value || null })} style={S.input} readOnly={!isAdmin} />
           </div>
         </div>
 
@@ -396,20 +498,25 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
 
 // ── New Post Modal ─────────────────────────────────────────────────────────────
 
-function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
-  orgId: string | null; authorName: string; defaultDate: string;
+function NewPostModal({ orgId, authorName, defaultDate, platforms, onClose, onCreated }: {
+  orgId: string | null; authorName: string; defaultDate: string; platforms: string[];
   onClose: () => void; onCreated: (p: CalPost) => void;
 }) {
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
-  const [platform, setPlatform] = useState<Platform>("LinkedIn");
+  const [platform, setPlatform] = useState<Platform>(platforms[0] ?? "LinkedIn");
   const [persona, setPersona] = useState("Company (all)");
   const [date, setDate] = useState(defaultDate);
-  const [time, setTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // After creation, show media upload step
   const [createdPost, setCreatedPost] = useState<CalPost | null>(null);
+
+  useEffect(() => {
+    if (platforms.length > 0 && !platforms.includes(platform)) {
+      setPlatform(platforms[0]);
+    }
+  }, [platforms, platform]);
 
   async function handleCreate() {
     if (!title.trim()) { setError("Title is required"); return; }
@@ -417,8 +524,7 @@ function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
     const sb = createClient();
     const { data, error: err } = await sb.from("cal_posts").insert({
       org_id: orgId, title: title.trim(), caption: caption.trim() || null,
-      platform, persona, scheduled_date: date, scheduled_time: time || null,
-      created_by: authorName,
+      platform, persona, scheduled_date: date, created_by: authorName,
     }).select().single();
     setLoading(false);
     if (err) { setError(err.message); return; }
@@ -472,19 +578,13 @@ function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
           <div style={S.fieldGroup}>
             <span style={S.fieldLabel}>Platform</span>
             <select value={platform} onChange={e => setPlatform(e.target.value as Platform)} style={S.select}>
-              {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+              {platforms.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={S.fieldGroup}>
-            <span style={S.fieldLabel}>Scheduled date</span>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={S.input} />
-          </div>
-          <div style={S.fieldGroup}>
-            <span style={S.fieldLabel}>Time (optional)</span>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)} style={S.input} placeholder="e.g. 09:00" />
-          </div>
+        <div style={S.fieldGroup}>
+          <span style={S.fieldLabel}>Scheduled for</span>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={S.input} />
         </div>
         {error && <p style={{ color: "#dc2626", fontSize: 12 }}>{error}</p>}
       </div>
@@ -599,34 +699,27 @@ function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }
       <div style={{ ...S.modalBody, gap: 10 }}>
         {posts.length === 0 && <p style={{ fontSize: 13, color: "#9ca3af" }}>No posts scheduled for this day.</p>}
         {posts.map(p => {
-          const pc = PLATFORM_COLORS[p.platform];
+          const pc = getPlatformColor(p.platform);
           const ss = STATUS_STYLE[p.status];
           return (
             <div
               key={p.id}
+              onClick={() => { onPostClick(p); onClose(); }}
               style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                borderRadius: 10, border: "1px solid #e5e7eb",
+                borderRadius: 10, border: "1px solid #e5e7eb", cursor: "pointer",
                 background: "#fff", transition: "background 0.1s",
               }}
               onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
               onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
             >
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: pc.dot, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { onPostClick(p); onClose(); }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</p>
                 {p.scheduled_time && <p style={{ fontSize: 11.5, color: "#9ca3af", margin: "2px 0 0" }}>{fmtTime(p.scheduled_time)}</p>}
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: pc.bg, color: pc.text, flexShrink: 0 }}>{p.platform}</span>
               <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: ss.bg, color: ss.color, flexShrink: 0 }}>{ss.label}</span>
-              <button
-                onClick={() => { onPostClick(p); onClose(); }}
-                style={{
-                  padding: "4px 10px", borderRadius: 6, border: "1px solid #e5e7eb",
-                  background: "#fff", cursor: "pointer", fontSize: 12, color: "#374151",
-                  fontWeight: 500, flexShrink: 0,
-                }}
-              >Edit</button>
             </div>
           );
         })}
@@ -677,50 +770,26 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           return (
             <div
               key={i}
-              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default", position: "relative" }}
+              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default" }}
               onClick={() => {
                 if (!cell.dateStr || !cell.isCurrentMonth) return;
-                if (dayPosts.length > 0) {
-                  setOverflowDate(cell.dateStr);
-                } else if (isAdmin) {
-                  onDayClick(cell.dateStr);
-                }
+                if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
+                else if (isAdmin) onDayClick(cell.dateStr);
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
-                {isAdmin && cell.isCurrentMonth && (
-                  <button
-                    onClick={e => { e.stopPropagation(); onDayClick(cell.dateStr!); }}
-                    style={{
-                      width: 18, height: 18, borderRadius: 4, border: "none",
-                      background: "#e0e7ff", color: "#4f46e5", fontSize: 14, lineHeight: 1,
-                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontWeight: 700, flexShrink: 0, opacity: 0.7,
-                    }}
-                    title="New post on this day"
-                  >+</button>
-                )}
-              </div>
+              <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
                 {dayPosts.slice(0, CHIP_LIMIT).map(p => {
-                  const pc = PLATFORM_COLORS[p.platform];
+                  const pc = getPlatformColor(p.platform);
                   return (
                     <div
                       key={p.id}
-                      style={{ ...S.calPostChip, justifyContent: "space-between" }}
+                      style={S.calPostChip}
                       onClick={e => { e.stopPropagation(); onPostClick(p); }}
                     >
                       <span style={{ ...S.calDot, background: pc.dot }} />
-                      <span style={{ ...S.calChipTitle, flex: 1 }}>{p.title}</span>
+                      <span style={S.calChipTitle}>{p.title}</span>
                       <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
-                      {isAdmin && (
-                        <span
-                          onClick={e => { e.stopPropagation(); onPostClick(p); }}
-                          style={{ fontSize: 9, color: "#9ca3af", marginLeft: 2, cursor: "pointer", flexShrink: 0 }}
-                          title="Edit post"
-                        >✎</span>
-                      )}
                     </div>
                   );
                 })}
@@ -745,7 +814,7 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           isAdmin={isAdmin}
           onClose={() => setOverflowDate(null)}
           onPostClick={onPostClick}
-          onNewPost={() => { setOverflowDate(null); onDayClick(overflowDate); }}
+          onNewPost={() => onDayClick(overflowDate)}
         />
       )}
     </>
@@ -784,41 +853,27 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
               key={dateStr}
               style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
             >
-              {/* Day header with + button */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8 }}>
+              {/* Day header */}
+              <div
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8, cursor: isAdmin ? "pointer" : "default" }}
+                onClick={() => isAdmin && onDayClick(dateStr)}
+              >
                 <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, letterSpacing: "0.5px", marginBottom: 3 }}>{label}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
-                  {isAdmin && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDayClick(dateStr); }}
-                      style={{
-                        width: 18, height: 18, borderRadius: 4, border: "none",
-                        background: "#6366f1", color: "#fff", fontSize: 13, lineHeight: 1,
-                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 700,
-                      }}
-                      title="New post"
-                    >+</button>
-                  )}
-                </div>
+                <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
               </div>
               {/* Posts */}
               <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
                 {dayPosts.slice(0, WEEK_CHIP_LIMIT).map(p => {
-                  const pc = PLATFORM_COLORS[p.platform];
+                  const pc = getPlatformColor(p.platform);
                   return (
                     <div
                       key={p.id}
                       style={{ ...S.calPostChip, flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "5px 6px" }}
                       onClick={e => { e.stopPropagation(); onPostClick(p); }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                          <span style={{ ...S.calDot, background: pc.dot }} />
-                          <span style={{ ...S.calChipTitle, maxWidth: "none", flex: 1 }}>{p.title}</span>
-                        </div>
-                        {isAdmin && <span style={{ fontSize: 9, color: "#9ca3af", flexShrink: 0 }} title="Edit">✎</span>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
+                        <span style={{ ...S.calDot, background: pc.dot }} />
+                        <span style={{ ...S.calChipTitle, maxWidth: "none", flex: 1 }}>{p.title}</span>
                       </div>
                       <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
                     </div>
@@ -827,7 +882,7 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
                 {overflow > 0 && (
                   <button
                     style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 4, background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 2 }}
-                    onClick={(e) => { e.stopPropagation(); setOverflowDate(dateStr); }}
+                    onClick={() => setOverflowDate(dateStr)}
                   >
                     +{overflow} more
                   </button>
@@ -862,12 +917,15 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const [month, setMonth] = useState(estToday.month);
   const [view, setView] = useState<"month" | "week">("month");
   const [posts, setPosts] = useState<CalPost[]>([]);
+  const [platforms, setPlatforms] = useState<Platform[]>(DEFAULT_PLATFORMS);
   const [filterPlatform, setFilterPlatform] = useState<Platform | "all">("all");
+  const [platformAction, setPlatformAction] = useState<"create" | "edit" | "delete" | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newDate, setNewDate] = useState(todayYmdEST());
   const [selectedPost, setSelectedPost] = useState<CalPost | null>(null);
-  const [activePost, setActivePost] = useState<CalPost | null>(null);
   const confirm = useConfirm();
+
+  const platformStoreKey = `marketing-platforms-${orgId ?? "admin"}`;
 
   const load = useCallback(async () => {
     const sb = createClient();
@@ -879,26 +937,72 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); }
-  function nextMonth() { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); }
-  function openPostEditor(post: CalPost) {
-    setActivePost(post);
-    setSelectedPost(post);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(platformStoreKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setPlatforms(parsed);
+      }
+    } catch {
+      // Ignore malformed saved data.
+    }
+  }, [platformStoreKey]);
+
+  useEffect(() => {
+    const fromPosts = posts.map((p) => p.platform).filter(Boolean);
+    const merged = Array.from(new Set([...DEFAULT_PLATFORMS, ...fromPosts, ...platforms])).sort();
+    if (merged.join("|") !== platforms.join("|")) {
+      setPlatforms(merged);
+    }
+  }, [posts, platforms]);
+
+  function persistPlatforms(next: string[]) {
+    setPlatforms(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(platformStoreKey, JSON.stringify(next));
+    }
   }
 
-  async function handleDeleteActivePost() {
-    if (!activePost) return;
-    if (!(await confirm({
-      title: "Delete post",
-      message: `Delete "${activePost.title}"? This cannot be undone.`,
-      confirmLabel: "Delete post",
-      destructive: true,
-    }))) return;
-    await createClient().from("cal_posts").delete().eq("id", activePost.id);
-    setPosts(prev => prev.filter((x) => x.id !== activePost.id));
-    if (selectedPost?.id === activePost.id) setSelectedPost(null);
-    setActivePost(null);
+  async function createPlatform(name: string) {
+    if (platforms.some((p) => p.toLowerCase() === name.toLowerCase())) throw new Error("Platform already exists.");
+    const next = [...platforms, name].sort();
+    persistPlatforms(next);
   }
+
+  async function renamePlatform(from: string, to: string) {
+    if (from === to) return;
+    if (platforms.some((p) => p.toLowerCase() === to.toLowerCase() && p !== from)) {
+      throw new Error("Another platform already has that name.");
+    }
+    const { error } = await createClient().from("cal_posts").update({ platform: to }).eq("platform", from);
+    if (error) throw new Error(error.message);
+    setPosts((prev) => prev.map((p) => (p.platform === from ? { ...p, platform: to } : p)));
+    const next = platforms.map((p) => (p === from ? to : p)).sort();
+    persistPlatforms(next);
+    if (filterPlatform === from) setFilterPlatform(to);
+  }
+
+  async function deletePlatform(name: string) {
+    const linkedCount = posts.filter((p) => p.platform === name).length;
+    if (linkedCount > 0) {
+      throw new Error(`Cannot delete "${name}" while ${linkedCount} post(s) still use it.`);
+    }
+    if (!(await confirm({
+      title: "Delete platform",
+      message: `Delete "${name}" from filter options?`,
+      destructive: true,
+      confirmLabel: "Delete platform",
+    }))) return;
+    const next = platforms.filter((p) => p !== name);
+    persistPlatforms(next.length > 0 ? next : DEFAULT_PLATFORMS);
+    if (filterPlatform === name) setFilterPlatform("all");
+  }
+
+  function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); }
+  function nextMonth() { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); }
 
   const filtered = posts.filter(p => filterPlatform === "all" || p.platform === filterPlatform);
 
@@ -917,8 +1021,15 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <select value={filterPlatform} onChange={e => setFilterPlatform(e.target.value as Platform | "all")} style={S.filterSelect}>
             <option value="all">All platforms</option>
-            {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+            {platforms.map(p => <option key={p}>{p}</option>)}
           </select>
+          {isAdmin && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => setPlatformAction("create")} style={S.iconBtn} title="Create platform"><PlusIcon /></button>
+              <button onClick={() => setPlatformAction("edit")} style={S.iconBtn} title="Edit platform"><EditIcon /></button>
+              <button onClick={() => setPlatformAction("delete")} style={{ ...S.iconBtn, color: "#dc2626" }} title="Delete platform"><TrashIcon /></button>
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={S.viewToggle}>
@@ -932,31 +1043,9 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           </div>
           <button onClick={() => { const t = getZonedDateParts(); setYear(t.year); setMonth(t.month); }} style={S.outlineBtn}>Today</button>
           {isAdmin && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <button
-                onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }}
-                style={S.iconBtn}
-                title="Create post"
-              >
-                <PlusIcon />
-              </button>
-              <button
-                onClick={() => activePost && openPostEditor(activePost)}
-                style={{ ...S.iconBtn, opacity: activePost ? 1 : 0.4, cursor: activePost ? "pointer" : "not-allowed" }}
-                disabled={!activePost}
-                title={activePost ? `Edit: ${activePost.title}` : "Select a post first"}
-              >
-                <EditIcon />
-              </button>
-              <button
-                onClick={handleDeleteActivePost}
-                style={{ ...S.iconBtn, color: activePost ? "#dc2626" : "#fca5a5", opacity: activePost ? 1 : 0.5, cursor: activePost ? "pointer" : "not-allowed" }}
-                disabled={!activePost}
-                title={activePost ? `Delete: ${activePost.title}` : "Select a post first"}
-              >
-                <TrashIcon />
-              </button>
-            </div>
+            <button onClick={() => { setNewDate(todayYmdEST()); setShowNew(true); }} style={S.primaryBtn}>
+              <PlusIcon /> New post
+            </button>
           )}
         </div>
       </div>
@@ -965,10 +1054,10 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
       {view === "month"
         ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
-            onPostClick={p => openPostEditor(p)} />
+            onPostClick={p => setSelectedPost(p)} />
         : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
-            onPostClick={p => openPostEditor(p)} />
+            onPostClick={p => setSelectedPost(p)} />
       }
 
       {/* Asset Drop */}
@@ -976,7 +1065,7 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
       {/* Modals */}
       {showNew && (
-        <NewPostModal orgId={orgId} authorName={authorName} defaultDate={newDate}
+        <NewPostModal orgId={orgId} authorName={authorName} defaultDate={newDate} platforms={platforms}
           onClose={() => setShowNew(false)}
           onCreated={p => { setPosts(prev => [...prev, p]); }} />
       )}
@@ -985,13 +1074,20 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
           post={selectedPost}
           isAdmin={isAdmin}
           authorName={authorName}
+          platforms={platforms}
           onClose={() => setSelectedPost(null)}
-          onUpdated={p => { setPosts(prev => prev.map(x => x.id === p.id ? p : x)); setSelectedPost(p); setActivePost(p); }}
-          onDeleted={id => {
-            setPosts(prev => prev.filter(x => x.id !== id));
-            setSelectedPost(null);
-            if (activePost?.id === id) setActivePost(null);
-          }}
+          onUpdated={p => { setPosts(prev => prev.map(x => x.id === p.id ? p : x)); setSelectedPost(p); }}
+          onDeleted={id => { setPosts(prev => prev.filter(x => x.id !== id)); setSelectedPost(null); }}
+        />
+      )}
+      {platformAction && (
+        <PlatformActionModal
+          mode={platformAction}
+          platforms={platforms}
+          onClose={() => setPlatformAction(null)}
+          onCreate={createPlatform}
+          onRename={renamePlatform}
+          onDelete={deletePlatform}
         />
       )}
     </div>
