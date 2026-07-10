@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+import { extractText, getDocumentProxy } from "unpdf";
 
 export const runtime = "nodejs";
 
@@ -107,11 +106,11 @@ export async function POST(req: NextRequest) {
 
     // 2. Extract raw text from PDF
     const arrayBuffer = await file.arrayBuffer();
-    const pdfBuffer = Buffer.from(arrayBuffer);
     let pdfText: string;
     try {
-      const parsed = await pdfParse(pdfBuffer);
-      pdfText = parsed.text as string;
+      const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      pdfText = Array.isArray(text) ? text.join("\n") : (text as string);
     } catch (e) {
       return NextResponse.json({ error: `Failed to parse PDF: ${e instanceof Error ? e.message : String(e)}` }, { status: 422 });
     }
@@ -148,7 +147,6 @@ Return ONLY the raw JSON array, starting with [ and ending with ].`;
           { role: "user", content: pdfText.slice(0, 40000) }, // guard against huge PDFs
         ],
         temperature: 0,
-        response_format: { type: "json_object" },
       }),
     });
 
@@ -162,12 +160,16 @@ Return ONLY the raw JSON array, starting with [ and ending with ].`;
 
     let extractedPosts: ExtractedPost[];
     try {
+      // Strip markdown code fences if present
+      let cleaned = rawContent.trim();
+      const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) cleaned = fenceMatch[1].trim();
+
       // The model may return an array or a {posts:[...]} wrapper
-      let parsed = JSON.parse(rawContent);
+      const parsed = JSON.parse(cleaned);
       if (Array.isArray(parsed)) {
         extractedPosts = parsed;
       } else if (parsed && typeof parsed === "object") {
-        // Find first array value
         const firstArr = Object.values(parsed).find(v => Array.isArray(v));
         if (firstArr) {
           extractedPosts = firstArr as ExtractedPost[];
