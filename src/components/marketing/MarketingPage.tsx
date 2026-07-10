@@ -17,6 +17,7 @@ import {
 
 type Platform = "LinkedIn" | "Instagram" | "X" | "TikTok" | "Facebook" | "YouTube";
 type PostStatus = "pending" | "approved" | "changes_requested";
+type CalendarAction = "view" | "create" | "edit";
 
 type CalPost = {
   id: string;
@@ -642,8 +643,9 @@ function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }
 
 // ── Month Grid View ───────────────────────────────────────────────────────────
 
-function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
+function MonthGrid({ year, month, posts, isAdmin, actionMode, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
+  actionMode: CalendarAction;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
@@ -681,8 +683,19 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
               style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default", position: "relative" }}
               onClick={() => {
                 if (!cell.dateStr || !cell.isCurrentMonth) return;
-                if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
-                else if (isAdmin) onDayClick(cell.dateStr);
+                if (isAdmin && actionMode === "create") {
+                  onDayClick(cell.dateStr);
+                  return;
+                }
+                if (dayPosts.length > 0) {
+                  if (isAdmin && actionMode === "edit" && dayPosts.length === 1) {
+                    onPostClick(dayPosts[0]);
+                  } else {
+                    setOverflowDate(cell.dateStr);
+                  }
+                } else if (isAdmin) {
+                  onDayClick(cell.dateStr);
+                }
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -752,8 +765,9 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
 
 // ── Week View ─────────────────────────────────────────────────────────────────
 
-function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
+function WeekGrid({ posts, isAdmin, actionMode, onDayClick, onPostClick }: {
   year: number; month: number; posts: CalPost[]; isAdmin: boolean;
+  actionMode: CalendarAction;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
@@ -781,6 +795,16 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
             <div
               key={dateStr}
               style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
+              onClick={() => {
+                if (!isAdmin) return;
+                if (actionMode === "create") {
+                  onDayClick(dateStr);
+                  return;
+                }
+                if (actionMode === "edit" && dayPosts.length === 1) {
+                  onPostClick(dayPosts[0]);
+                }
+              }}
             >
               {/* Day header with + button */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8 }}>
@@ -789,7 +813,7 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
                   <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
                   {isAdmin && (
                     <button
-                      onClick={() => onDayClick(dateStr)}
+                      onClick={(e) => { e.stopPropagation(); onDayClick(dateStr); }}
                       style={{
                         width: 18, height: 18, borderRadius: 4, border: "none",
                         background: "#6366f1", color: "#fff", fontSize: 13, lineHeight: 1,
@@ -825,7 +849,7 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
                 {overflow > 0 && (
                   <button
                     style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 4, background: "none", border: "none", cursor: "pointer", textAlign: "left", marginTop: 2 }}
-                    onClick={() => setOverflowDate(dateStr)}
+                    onClick={(e) => { e.stopPropagation(); setOverflowDate(dateStr); }}
                   >
                     +{overflow} more
                   </button>
@@ -861,6 +885,7 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const [view, setView] = useState<"month" | "week">("month");
   const [posts, setPosts] = useState<CalPost[]>([]);
   const [filterPlatform, setFilterPlatform] = useState<Platform | "all">("all");
+  const [calendarAction, setCalendarAction] = useState<CalendarAction>("view");
   const [showNew, setShowNew] = useState(false);
   const [newDate, setNewDate] = useState(todayYmdEST());
   const [selectedPost, setSelectedPost] = useState<CalPost | null>(null);
@@ -897,6 +922,18 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
             <option value="all">All platforms</option>
             {PLATFORMS.map(p => <option key={p}>{p}</option>)}
           </select>
+          {isAdmin && (
+            <select
+              value={calendarAction}
+              onChange={e => setCalendarAction(e.target.value as CalendarAction)}
+              style={S.filterSelect}
+              title="Calendar action mode"
+            >
+              <option value="view">View calendar</option>
+              <option value="create">Create mode</option>
+              <option value="edit">Edit mode</option>
+            </select>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={S.viewToggle}>
@@ -919,10 +956,10 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
       {/* Calendar */}
       {view === "month"
-        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
+        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} actionMode={calendarAction}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
             onPostClick={p => setSelectedPost(p)} />
-        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
+        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} actionMode={calendarAction}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
             onPostClick={p => setSelectedPost(p)} />
       }
