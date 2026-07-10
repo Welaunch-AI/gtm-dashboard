@@ -327,8 +327,8 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
           />
         </div>
 
-        {/* Platform + Date row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {/* Platform + Date + Time row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
           <div style={S.fieldGroup}>
             <span style={S.fieldLabel}>Platform</span>
             <select value={platform} onChange={e => { setPlatform(e.target.value as Platform); save({ platform: e.target.value as Platform }); }} style={S.select} disabled={!isAdmin}>
@@ -336,8 +336,12 @@ function PostDetailModal({ post, isAdmin, authorName, onClose, onUpdated, onDele
             </select>
           </div>
           <div style={S.fieldGroup}>
-            <span style={S.fieldLabel}>Scheduled for</span>
+            <span style={S.fieldLabel}>Date</span>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} onBlur={() => date !== post.scheduled_date && save({ scheduled_date: date })} style={S.input} readOnly={!isAdmin} />
+          </div>
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>Time (EST)</span>
+            <input type="time" value={post.scheduled_time ?? ""} onChange={e => isAdmin && save({ scheduled_time: e.target.value || null })} style={S.input} readOnly={!isAdmin} />
           </div>
         </div>
 
@@ -402,6 +406,7 @@ function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
   const [platform, setPlatform] = useState<Platform>("LinkedIn");
   const [persona, setPersona] = useState("Company (all)");
   const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // After creation, show media upload step
@@ -413,7 +418,8 @@ function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
     const sb = createClient();
     const { data, error: err } = await sb.from("cal_posts").insert({
       org_id: orgId, title: title.trim(), caption: caption.trim() || null,
-      platform, persona, scheduled_date: date, created_by: authorName,
+      platform, persona, scheduled_date: date, scheduled_time: time || null,
+      created_by: authorName,
     }).select().single();
     setLoading(false);
     if (err) { setError(err.message); return; }
@@ -471,9 +477,15 @@ function NewPostModal({ orgId, authorName, defaultDate, onClose, onCreated }: {
             </select>
           </div>
         </div>
-        <div style={S.fieldGroup}>
-          <span style={S.fieldLabel}>Scheduled for</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={S.input} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>Scheduled date</span>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={S.input} />
+          </div>
+          <div style={S.fieldGroup}>
+            <span style={S.fieldLabel}>Time (optional)</span>
+            <input type="time" value={time} onChange={e => setTime(e.target.value)} style={S.input} placeholder="e.g. 09:00" />
+          </div>
         </div>
         {error && <p style={{ color: "#dc2626", fontSize: 12 }}>{error}</p>}
       </div>
@@ -593,22 +605,29 @@ function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }
           return (
             <div
               key={p.id}
-              onClick={() => { onPostClick(p); onClose(); }}
               style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                borderRadius: 10, border: "1px solid #e5e7eb", cursor: "pointer",
+                borderRadius: 10, border: "1px solid #e5e7eb",
                 background: "#fff", transition: "background 0.1s",
               }}
               onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
               onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
             >
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: pc.dot, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { onPostClick(p); onClose(); }}>
                 <p style={{ fontSize: 13.5, fontWeight: 600, color: "#111827", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</p>
                 {p.scheduled_time && <p style={{ fontSize: 11.5, color: "#9ca3af", margin: "2px 0 0" }}>{fmtTime(p.scheduled_time)}</p>}
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: pc.bg, color: pc.text, flexShrink: 0 }}>{p.platform}</span>
               <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: ss.bg, color: ss.color, flexShrink: 0 }}>{ss.label}</span>
+              <button
+                onClick={() => { onPostClick(p); onClose(); }}
+                style={{
+                  padding: "4px 10px", borderRadius: 6, border: "1px solid #e5e7eb",
+                  background: "#fff", cursor: "pointer", fontSize: 12, color: "#374151",
+                  fontWeight: 500, flexShrink: 0,
+                }}
+              >Edit</button>
             </div>
           );
         })}
@@ -632,6 +651,7 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
   const [overflowDate, setOverflowDate] = useState<string | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<string | null>(null);
 
   const cells: { dateStr: string | null; day: number; isCurrentMonth: boolean }[] = [];
   for (let i = 0; i < firstDay; i++) cells.push({ dateStr: null, day: prevMonthDays - firstDay + 1 + i, isCurrentMonth: false });
@@ -656,29 +676,53 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
           const isToday = cell.dateStr === todayStr;
           const overflow = dayPosts.length - CHIP_LIMIT;
+          const isHovered = hoveredCell === cell.dateStr && cell.isCurrentMonth;
           return (
             <div
               key={i}
-              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default" }}
+              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default", position: "relative" }}
+              onMouseEnter={() => cell.dateStr && setHoveredCell(cell.dateStr)}
+              onMouseLeave={() => setHoveredCell(null)}
               onClick={() => {
                 if (!cell.dateStr || !cell.isCurrentMonth) return;
                 if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
                 else if (isAdmin) onDayClick(cell.dateStr);
               }}
             >
-              <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
+                {isAdmin && isHovered && cell.isCurrentMonth && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onDayClick(cell.dateStr!); }}
+                    style={{
+                      width: 20, height: 20, borderRadius: 4, border: "none",
+                      background: "#6366f1", color: "#fff", fontSize: 14, lineHeight: 1,
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 700, flexShrink: 0,
+                    }}
+                    title="New post"
+                  >+</button>
+                )}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
                 {dayPosts.slice(0, CHIP_LIMIT).map(p => {
                   const pc = PLATFORM_COLORS[p.platform];
                   return (
                     <div
                       key={p.id}
-                      style={S.calPostChip}
+                      style={{ ...S.calPostChip, justifyContent: "space-between" }}
                       onClick={e => { e.stopPropagation(); onPostClick(p); }}
                     >
                       <span style={{ ...S.calDot, background: pc.dot }} />
-                      <span style={S.calChipTitle}>{p.title}</span>
+                      <span style={{ ...S.calChipTitle, flex: 1 }}>{p.title}</span>
                       <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
+                      {isAdmin && (
+                        <span
+                          onClick={e => { e.stopPropagation(); onPostClick(p); }}
+                          style={{ fontSize: 9, color: "#9ca3af", marginLeft: 2, cursor: "pointer", flexShrink: 0 }}
+                          title="Edit post"
+                        >✎</span>
+                      )}
                     </div>
                   );
                 })}
@@ -703,7 +747,7 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           isAdmin={isAdmin}
           onClose={() => setOverflowDate(null)}
           onPostClick={onPostClick}
-          onNewPost={() => onDayClick(overflowDate)}
+          onNewPost={() => { setOverflowDate(null); onDayClick(overflowDate); }}
         />
       )}
     </>
@@ -742,13 +786,24 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
               key={dateStr}
               style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
             >
-              {/* Day header */}
-              <div
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8, cursor: isAdmin ? "pointer" : "default" }}
-                onClick={() => isAdmin && onDayClick(dateStr)}
-              >
+              {/* Day header with + button */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, letterSpacing: "0.5px", marginBottom: 3 }}>{label}</span>
-                <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{dayNum}</span>
+                  {isAdmin && (
+                    <button
+                      onClick={() => onDayClick(dateStr)}
+                      style={{
+                        width: 18, height: 18, borderRadius: 4, border: "none",
+                        background: "#6366f1", color: "#fff", fontSize: 13, lineHeight: 1,
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 700,
+                      }}
+                      title="New post"
+                    >+</button>
+                  )}
+                </div>
               </div>
               {/* Posts */}
               <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
@@ -760,9 +815,12 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
                       style={{ ...S.calPostChip, flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "5px 6px" }}
                       onClick={e => { e.stopPropagation(); onPostClick(p); }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
-                        <span style={{ ...S.calDot, background: pc.dot }} />
-                        <span style={{ ...S.calChipTitle, maxWidth: "none", flex: 1 }}>{p.title}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                          <span style={{ ...S.calDot, background: pc.dot }} />
+                          <span style={{ ...S.calChipTitle, maxWidth: "none", flex: 1 }}>{p.title}</span>
+                        </div>
+                        {isAdmin && <span style={{ fontSize: 9, color: "#9ca3af", flexShrink: 0 }} title="Edit">✎</span>}
                       </div>
                       <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
                     </div>
