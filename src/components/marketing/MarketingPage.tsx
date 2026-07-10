@@ -651,7 +651,6 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
   const [overflowDate, setOverflowDate] = useState<string | null>(null);
-  const [hoveredCell, setHoveredCell] = useState<string | null>(null);
 
   const cells: { dateStr: string | null; day: number; isCurrentMonth: boolean }[] = [];
   for (let i = 0; i < firstDay; i++) cells.push({ dateStr: null, day: prevMonthDays - firstDay + 1 + i, isCurrentMonth: false });
@@ -676,13 +675,10 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
           const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
           const isToday = cell.dateStr === todayStr;
           const overflow = dayPosts.length - CHIP_LIMIT;
-          const isHovered = hoveredCell === cell.dateStr && cell.isCurrentMonth;
           return (
             <div
               key={i}
               style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default", position: "relative" }}
-              onMouseEnter={() => cell.dateStr && setHoveredCell(cell.dateStr)}
-              onMouseLeave={() => setHoveredCell(null)}
               onClick={() => {
                 if (!cell.dateStr || !cell.isCurrentMonth) return;
                 if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
@@ -691,16 +687,16 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
-                {isAdmin && isHovered && cell.isCurrentMonth && (
+                {isAdmin && cell.isCurrentMonth && (
                   <button
                     onClick={e => { e.stopPropagation(); onDayClick(cell.dateStr!); }}
                     style={{
-                      width: 20, height: 20, borderRadius: 4, border: "none",
-                      background: "#6366f1", color: "#fff", fontSize: 14, lineHeight: 1,
+                      width: 18, height: 18, borderRadius: 4, border: "none",
+                      background: "#e0e7ff", color: "#4f46e5", fontSize: 14, lineHeight: 1,
                       cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontWeight: 700, flexShrink: 0,
+                      fontWeight: 700, flexShrink: 0, opacity: 0.7,
                     }}
-                    title="New post"
+                    title="New post on this day"
                   >+</button>
                 )}
               </div>
