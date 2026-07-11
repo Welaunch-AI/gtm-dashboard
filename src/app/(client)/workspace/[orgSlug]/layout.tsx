@@ -16,12 +16,12 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   if (!user) redirect("/login");
 
   // Retry profile fetch — the DB connection can be cold right after sign-in
-  let profile: { role: string; full_name: string | null; org_id: string | null } | null = null;
+  let profile: { role: string; full_name: string | null; org_id: string | null; avatar_url: string | null } | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
     const { data } = await supabase
       .from("profiles")
-      .select("role, full_name, org_id")
+      .select("role, full_name, org_id, avatar_url")
       .eq("id", user.id)
       .maybeSingle();
     if (data) { profile = data; break; }
@@ -37,12 +37,12 @@ export default async function WorkspaceLayout({ children, params }: Props) {
 
   // Retry org lookup — on Supabase's free tier the PostgREST connection can
   // be cold right after sign-in even though auth is already warm.
-  let org: { id: string; name: string; slug: string } | null = null;
+  let org: { id: string; name: string; slug: string; logo_url: string | null } | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt));
     const { data } = await (isUuid
-      ? supabase.from("organisations").select("id, name, slug").or(`id.eq.${orgSlug},slug.eq.${orgSlug}`)
-      : supabase.from("organisations").select("id, name, slug").eq("slug", orgSlug)
+      ? supabase.from("organisations").select("id, name, slug, logo_url").or(`id.eq.${orgSlug},slug.eq.${orgSlug}`)
+      : supabase.from("organisations").select("id, name, slug, logo_url").eq("slug", orgSlug)
     ).maybeSingle();
     if (data) { org = data; break; }
   }
@@ -75,7 +75,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
 
   // Admins get all orgs for workspace switcher
   const { data: allOrgs } = profile.role === "admin"
-    ? await supabase.from("organisations").select("id, name, slug").order("name")
+    ? await supabase.from("organisations").select("id, name, slug, logo_url").order("name")
     : { data: [org] };
 
   return (
@@ -84,6 +84,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         role={profile.role as "admin" | "client"}
         fullName={profile.full_name}
         email={user.email ?? ""}
+        avatarUrl={profile.avatar_url}
         orgs={allOrgs ?? []}
         currentOrg={org}
       />

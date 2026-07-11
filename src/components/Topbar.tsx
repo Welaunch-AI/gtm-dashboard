@@ -3,18 +3,20 @@
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import AvatarImage from "@/components/ui/AvatarImage";
 
-type Org = { id: string; name: string; slug: string };
+type Org = { id: string; name: string; slug: string; logo_url?: string | null };
 
 type Props = {
   role: "admin" | "client";
   fullName: string | null;
   email: string;
+  avatarUrl: string | null;
   orgs: Org[];
   currentOrg: Org | null;
 };
 
-export default function Topbar({ role, fullName, email, orgs, currentOrg }: Props) {
+export default function Topbar({ role, fullName, email, avatarUrl, orgs, currentOrg }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,11 +34,8 @@ export default function Topbar({ role, fullName, email, orgs, currentOrg }: Prop
     window.location.href = "/login";
   }
 
-  const initials = fullName
-    ? fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : email.slice(0, 2).toUpperCase();
-
   const displayName = fullName || email.split("@")[0];
+  const avatarLabel = fullName || email;
 
   return (
     <header style={S.topbar}>
@@ -48,7 +47,7 @@ export default function Topbar({ role, fullName, email, orgs, currentOrg }: Prop
       <div style={S.right}>
         <div ref={ref} style={{ position: "relative" }}>
           <button onClick={() => setOpen(!open)} style={S.profileBtn}>
-            <span style={S.avatar}>{initials}</span>
+            <AvatarImage src={avatarUrl} label={avatarLabel} size={32} />
             <div style={S.profileInfo}>
               <span style={S.profileName}>{displayName}</span>
               <span style={S.profileRole}>{role}</span>

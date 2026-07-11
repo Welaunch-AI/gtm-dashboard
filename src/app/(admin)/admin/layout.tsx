@@ -10,12 +10,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!user) redirect("/login");
 
   // Retry profile fetch — the DB connection can be cold right after sign-in
-  let profile: { role: string; full_name: string | null } | null = null;
+  let profile: { role: string; full_name: string | null; avatar_url: string | null } | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
     const { data } = await supabase
       .from("profiles")
-      .select("role, full_name")
+      .select("role, full_name, avatar_url")
       .eq("id", user.id)
       .maybeSingle();
     if (data) { profile = data; break; }
@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Fetch all organisations for the workspace switcher
   const { data: orgs } = await supabase
     .from("organisations")
-    .select("id, name, slug")
+    .select("id, name, slug, logo_url")
     .order("name");
 
   return (
@@ -35,6 +35,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         role="admin"
         fullName={profile.full_name}
         email={user.email ?? ""}
+        avatarUrl={profile.avatar_url}
         orgs={orgs ?? []}
         currentOrg={null}
       />

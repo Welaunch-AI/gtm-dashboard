@@ -9,7 +9,7 @@ export default async function AdminProfilePage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, full_name, org_id")
+    .select("role, full_name, org_id, avatar_url")
     .eq("id", user.id)
     .single();
 
@@ -17,7 +17,7 @@ export default async function AdminProfilePage() {
 
   const { data: orgs } = await supabase
     .from("organisations")
-    .select("id, name, slug")
+    .select("id, name, slug, logo_url")
     .order("name");
 
   return (
@@ -25,6 +25,7 @@ export default async function AdminProfilePage() {
       userId={user.id}
       email={user.email ?? ""}
       fullName={profile.full_name}
+      avatarUrl={profile.avatar_url}
       role="admin"
       orgId={null}
       orgs={orgs ?? []}

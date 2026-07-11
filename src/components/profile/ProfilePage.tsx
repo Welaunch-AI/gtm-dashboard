@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import ImageUploadField from "@/components/ui/ImageUploadField";
+import AvatarImage from "@/components/ui/AvatarImage";
+import { fileExt, storagePathFromPublicUrl } from "@/lib/storage-images";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,15 +14,17 @@ interface Props {
   userId: string;
   email: string;
   fullName: string | null;
+  avatarUrl: string | null;
   role: "admin" | "client";
   orgId: string | null;
-  orgs: { id: string; name: string; slug: string }[];
+  orgs: { id: string; name: string; slug: string; logo_url?: string | null }[];
 }
 
 interface ClientUser {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url?: string | null;
   role: string;
   org_id: string | null;
 }
@@ -136,8 +142,11 @@ function Toast({ msg, type }: { msg: string; type: "success" | "error" }) {
 
 // ─── Own profile section ──────────────────────────────────────────────────────
 
-function OwnProfile({ userId, email, fullName }: { userId: string; email: string; fullName: string | null }) {
+function OwnProfile({ userId, email, fullName, avatarUrl: initialAvatarUrl }: { userId: string; email: string; fullName: string | null; avatarUrl: string | null }) {
+  const router = useRouter();
   const [name, setName] = useState(fullName ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -182,25 +191,73 @@ function OwnProfile({ userId, email, fullName }: { userId: string; email: string
     window.location.href = "/login";
   }
 
-  // Avatar initials
-  const initials = name ? name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : email.slice(0, 2).toUpperCase();
+  async function removeOldAvatar(url: string | null) {
+    if (!url) return;
+    const path = storagePathFromPublicUrl(url, "avatars");
+    if (!path) return;
+    await createClient().storage.from("avatars").remove([path]);
+  }
+
+  async function uploadAvatar(file: File) {
+    setUploadingAvatar(true);
+    const supabase = createClient();
+    const path = `${userId}/${Date.now()}.${fileExt(file)}`;
+    const { error: uploadErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (uploadErr) {
+      setUploadingAvatar(false);
+      throw new Error(uploadErr.message);
+    }
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+    const { error: updateErr } = await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", userId);
+    if (updateErr) {
+      setUploadingAvatar(false);
+      throw new Error(updateErr.message);
+    }
+    await removeOldAvatar(avatarUrl);
+    setAvatarUrl(publicUrl);
+    setUploadingAvatar(false);
+    showToast("Profile photo updated.", "success");
+    router.refresh();
+  }
+
+  async function removeAvatar() {
+    setUploadingAvatar(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
+    if (error) {
+      setUploadingAvatar(false);
+      showToast(error.message, "error");
+      return;
+    }
+    await removeOldAvatar(avatarUrl);
+    setAvatarUrl(null);
+    setUploadingAvatar(false);
+    showToast("Profile photo removed.", "success");
+    router.refresh();
+  }
+
+  const displayLabel = name || email;
 
   return (
     <>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {/* Avatar */}
-      <Section title="Profile" subtitle="Your public display name and avatar.">
-        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: "50%", background: "#111827",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22, fontWeight: 700, color: "#fff", flexShrink: 0,
-          }}>{initials}</div>
-          <div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{name || email}</p>
-            <p style={{ fontSize: 13, color: "#9ca3af", margin: "2px 0 0" }}>{email}</p>
-          </div>
+      <Section title="Profile" subtitle="Your public display name and profile photo.">
+        <div style={{ marginBottom: 20 }}>
+          <ImageUploadField
+            imageUrl={avatarUrl}
+            label={displayLabel}
+            uploading={uploadingAvatar}
+            helperText="Upload a profile photo. This appears in the top bar for you and your team."
+            uploadLabel="Change photo"
+            onUpload={uploadAvatar}
+            onRemove={removeAvatar}
+          />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{displayLabel}</p>
+          <p style={{ fontSize: 13, color: "#9ca3af", margin: "2px 0 0" }}>{email}</p>
         </div>
         <Field label="Full name">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" style={{ ...inputStyle, maxWidth: 360 }} />
@@ -263,9 +320,7 @@ function UserRow({
   const [newPw, setNewPw] = useState("");
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const initials = user.full_name
-    ? user.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : user.email.slice(0, 2).toUpperCase();
+  const avatarLabel = user.full_name || user.email;
 
   async function save() {
     if (newPw.length < 8) return;
@@ -290,11 +345,13 @@ function UserRow({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap" }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: "50%", background: user.role === "admin" ? "#ede9fe" : "#e5e7eb",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 13, fontWeight: 700, color: user.role === "admin" ? "#7c3aed" : "#374151", flexShrink: 0,
-      }}>{initials}</div>
+      <AvatarImage
+        src={user.avatar_url}
+        label={avatarLabel}
+        size={36}
+        background={user.role === "admin" ? "#ede9fe" : "#e5e7eb"}
+        color={user.role === "admin" ? "#7c3aed" : "#374151"}
+      />
 
       <div style={{ flex: 1, minWidth: 140 }}>
         <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", margin: 0 }}>
@@ -639,7 +696,7 @@ function AdminUserPanel({ orgs, currentUserId }: { orgs: { id: string; name: str
 
 // ─── Main ProfilePage ─────────────────────────────────────────────────────────
 
-export default function ProfilePage({ userId, email, fullName, role, orgId: _orgId, orgs }: Props) {
+export default function ProfilePage({ userId, email, fullName, avatarUrl, role, orgId: _orgId, orgs }: Props) {
   return (
     <div style={{ padding: "32px 40px", maxWidth: 760, margin: "0 auto" }}>
       <div style={{ marginBottom: 24 }}>
@@ -647,7 +704,7 @@ export default function ProfilePage({ userId, email, fullName, role, orgId: _org
         <p style={{ fontSize: 14, color: "#6b7280", margin: "4px 0 0" }}>Manage your account and, if you&apos;re an admin, your team&apos;s access.</p>
       </div>
 
-      <OwnProfile userId={userId} email={email} fullName={fullName} />
+      <OwnProfile userId={userId} email={email} fullName={fullName} avatarUrl={avatarUrl} />
 
       {role === "admin" && <AdminUserPanel orgs={orgs} currentUserId={userId} />}
     </div>

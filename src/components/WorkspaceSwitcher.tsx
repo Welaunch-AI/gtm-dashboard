@@ -3,8 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import AvatarImage from "@/components/ui/AvatarImage";
+import ImageUploadField from "@/components/ui/ImageUploadField";
+import { fileExt, storagePathFromPublicUrl } from "@/lib/storage-images";
 
-type Org = { id: string; name: string; slug: string };
+type Org = { id: string; name: string; slug: string; logo_url?: string | null };
 
 type Props = {
   orgs: Org[];
@@ -19,6 +22,8 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
   const [mode, setMode] = useState<"menu" | "create" | "edit" | "delete">("menu");
   const [newName, setNewName] = useState("");
   const [newSlug, setNewSlug] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -90,14 +95,90 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
   function openEdit() {
     setNewName(currentOrg?.name ?? "");
     setNewSlug(currentOrg?.slug ?? "");
+    setLogoUrl(currentOrg?.logo_url ?? null);
     setMode("edit");
+  }
+
+  async function removeOldLogo(url: string | null) {
+    if (!url) return;
+    const path = storagePathFromPublicUrl(url, "org-logos");
+    if (!path) return;
+    await createClient().storage.from("org-logos").remove([path]);
+  }
+
+  async function uploadLogo(file: File) {
+    if (!currentOrg || !isAdmin) return;
+    setUploadingLogo(true);
+    setError("");
+    const supabase = createClient();
+    const path = `${currentOrg.id}/${Date.now()}.${fileExt(file)}`;
+    const { error: uploadErr } = await supabase.storage.from("org-logos").upload(path, file, { upsert: true });
+    if (uploadErr) {
+      setUploadingLogo(false);
+      throw new Error(uploadErr.message);
+    }
+    const { data: { publicUrl } } = supabase.storage.from("org-logos").getPublicUrl(path);
+    const { error: updateErr } = await supabase
+      .from("organisations")
+      .update({ logo_url: publicUrl })
+      .eq("id", currentOrg.id);
+    if (updateErr) {
+      setUploadingLogo(false);
+      throw new Error(updateErr.message);
+    }
+    await removeOldLogo(logoUrl);
+    setLogoUrl(publicUrl);
+    setUploadingLogo(false);
+    router.refresh();
+  }
+
+  async function removeLogo() {
+    if (!currentOrg || !isAdmin) return;
+    setUploadingLogo(true);
+    setError("");
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("organisations")
+      .update({ logo_url: null })
+      .eq("id", currentOrg.id);
+    if (error) {
+      setUploadingLogo(false);
+      throw new Error(error.message);
+    }
+    await removeOldLogo(logoUrl);
+    setLogoUrl(null);
+    setUploadingLogo(false);
+    router.refresh();
   }
 
   function close() { setOpen(false); setMode("menu"); }
 
   const label = currentOrg ? currentOrg.name : "All Workspaces";
-  const avatarLetter = currentOrg ? currentOrg.name.charAt(0).toUpperCase() : "A";
+  const currentLogo = mode === "edit" ? logoUrl : currentOrg?.logo_url ?? null;
   const inTopbar = placement === "topbar";
+
+  function OrgBadge({ org, size = 28, radius = 7 }: { org: Org | null; size?: number; radius?: number | string }) {
+    if (!org) {
+      return (
+        <AvatarImage
+          src={null}
+          label="All Workspaces"
+          size={size}
+          radius={radius}
+          background="#111827"
+        />
+      );
+    }
+    return (
+      <AvatarImage
+        src={org.logo_url}
+        label={org.name}
+        size={size}
+        radius={radius}
+        background="#111827"
+      />
+    );
+  }
 
   return (
     <div ref={ref} style={{ position: "relative", padding: inTopbar ? 0 : "10px 10px 8px" }}>
@@ -106,7 +187,7 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
         onClick={() => { setOpen(!open); setMode("menu"); }}
         style={{ ...S.trigger, width: "100%" }}
       >
-        <span style={S.avatar}>{avatarLetter}</span>
+        <OrgBadge org={currentOrg ? { ...currentOrg, logo_url: currentLogo } : null} size={28} radius={7} />
         <div style={S.triggerText}>
           <span style={S.triggerLabel}>{label}</span>
           {isAdmin && (
@@ -130,7 +211,7 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
             <>
               {/* Current context header */}
               <div style={S.dropdownHeader}>
-                <span style={S.headerAvatar}>{avatarLetter}</span>
+                <OrgBadge org={currentOrg ? { ...currentOrg, logo_url: currentLogo } : null} size={32} radius={8} />
                 <div>
                   <p style={S.headerName}>{label}</p>
                   {isAdmin && <p style={S.headerRole}>{currentOrg ? "Client workspace" : "Agency view"}</p>}
@@ -157,7 +238,7 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
                       onClick={() => { close(); goTo(`/workspace/${o.slug || o.id}`); }}
                       style={{ ...S.item, ...(currentOrg?.id === o.id ? S.itemActive : {}) }}
                     >
-                      <span style={S.orgDot}>{o.name.charAt(0).toUpperCase()}</span>
+                      <OrgBadge org={o} size={22} radius={5} />
                       <span style={S.itemLabel}>{o.name}</span>
                       {currentOrg?.id === o.id && <CheckIcon />}
                     </button>
@@ -215,6 +296,21 @@ export default function WorkspaceSwitcher({ orgs, currentOrg, isAdmin, placement
                 placeholder={`Slug: ${slugify(newName) || "auto-generated"}`}
                 style={S.input}
               />
+              {mode === "edit" && isAdmin && currentOrg && (
+                <ImageUploadField
+                  imageUrl={logoUrl}
+                  label={newName || currentOrg.name}
+                  size={56}
+                  radius={10}
+                  background="#111827"
+                  uploading={uploadingLogo}
+                  helperText="Workspace logo. Visible to everyone in this workspace. Only admins can change it."
+                  uploadLabel="Upload logo"
+                  removeLabel="Remove logo"
+                  onUpload={uploadLogo}
+                  onRemove={removeLogo}
+                />
+              )}
               {error && <p style={S.errText}>{error}</p>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => setMode("menu")} style={S.cancelBtn}>Cancel</button>

@@ -854,18 +854,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          logo_url: string | null
           name: string
           slug: string
         }
         Insert: {
           created_at?: string
           id?: string
+          logo_url?: string | null
           name: string
           slug: string
         }
         Update: {
           created_at?: string
           id?: string
+          logo_url?: string | null
           name?: string
           slug?: string
         }
@@ -873,6 +876,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           full_name: string | null
           id: string
@@ -880,6 +884,7 @@ export type Database = {
           role: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           full_name?: string | null
           id: string
@@ -887,6 +892,7 @@ export type Database = {
           role?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           full_name?: string | null
           id?: string

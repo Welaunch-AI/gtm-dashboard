@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
   );
 
-  let q = supabase.from("profiles").select("id, full_name, role, org_id, created_at");
+  let q = supabase.from("profiles").select("id, full_name, role, org_id, avatar_url, created_at");
   if (orgId) q = q.eq("org_id", orgId);
 
   const { data, error } = await q.order("created_at", { ascending: false });
