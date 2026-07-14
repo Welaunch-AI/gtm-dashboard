@@ -931,8 +931,8 @@ function DayPostsModal({ date, posts, onClose, onPostClick, isAdmin, onNewPost }
 
 // ── Month Grid View ───────────────────────────────────────────────────────────
 
-function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
-  year: number; month: number; posts: CalPost[]; isAdmin: boolean;
+function MonthGrid({ year, month, posts, isAdmin, windowWidth, onDayClick, onPostClick }: {
+  year: number; month: number; posts: CalPost[]; isAdmin: boolean; windowWidth: number;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
@@ -940,6 +940,9 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
   const [overflowDate, setOverflowDate] = useState<string | null>(null);
+
+  const isSmall = windowWidth < 1400;
+  const isVerySmall = windowWidth < 1100;
 
   const cells: { dateStr: string | null; day: number; isCurrentMonth: boolean }[] = [];
   for (let i = 0; i < firstDay; i++) cells.push({ dateStr: null, day: prevMonthDays - firstDay + 1 + i, isCurrentMonth: false });
@@ -952,56 +955,81 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
   const postsByDate: Record<string, CalPost[]> = {};
   posts.forEach(p => { (postsByDate[p.scheduled_date] ??= []).push(p); });
 
-  const CHIP_LIMIT = 3;
+  // Show fewer chips on small screens to avoid overflow
+  const CHIP_LIMIT = isVerySmall ? 1 : isSmall ? 2 : 3;
+
+  const cellStyle: React.CSSProperties = {
+    ...S.calCell,
+    minHeight: isVerySmall ? 70 : isSmall ? 90 : 120,
+    padding: isSmall ? "5px 4px 4px" : "8px 8px 6px",
+  };
+  const dayHeaderStyle: React.CSSProperties = {
+    ...S.calDayHeader,
+    fontSize: isSmall ? 9 : 11,
+    padding: isSmall ? "6px 4px" : "8px 10px",
+  };
+  const chipStyle: React.CSSProperties = {
+    ...S.calPostChip,
+    padding: isSmall ? "2px 3px" : "3px 5px",
+  };
+  const chipTitleStyle: React.CSSProperties = {
+    ...S.calChipTitle,
+    fontSize: isSmall ? 9.5 : 10.5,
+  };
+  // On very small screens, hide the platform badge to save space
+  const showBadge = !isVerySmall;
 
   return (
     <>
-      <div style={S.calGrid}>
-        {DAY_NAMES.map(d => (
-          <div key={d} style={S.calDayHeader}>{d}</div>
-        ))}
-        {cells.map((cell, i) => {
-          const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
-          const isToday = cell.dateStr === todayStr;
-          const overflow = dayPosts.length - CHIP_LIMIT;
-          return (
-            <div
-              key={i}
-              style={{ ...S.calCell, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default" }}
-              onClick={() => {
-                if (!cell.dateStr || !cell.isCurrentMonth) return;
-                if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
-                else if (isAdmin) onDayClick(cell.dateStr);
-              }}
-            >
-              <span style={{ ...S.calDayNum, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
-                {dayPosts.slice(0, CHIP_LIMIT).map(p => {
-                  const pc = getPlatformColor(p.platform);
-                  return (
-                    <div
-                      key={p.id}
-                      style={S.calPostChip}
-                      onClick={e => { e.stopPropagation(); onPostClick(p); }}
+      {/* Horizontal scroll wrapper so the grid never collapses below min readable width */}
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ ...S.calGrid, minWidth: isSmall ? 680 : "100%" }}>
+          {DAY_NAMES.map(d => (
+            <div key={d} style={dayHeaderStyle}>{isVerySmall ? d.slice(0, 1) : d}</div>
+          ))}
+          {cells.map((cell, i) => {
+            const dayPosts = cell.dateStr ? (postsByDate[cell.dateStr] ?? []) : [];
+            const isToday = cell.dateStr === todayStr;
+            const overflow = dayPosts.length - CHIP_LIMIT;
+            return (
+              <div
+                key={i}
+                style={{ ...cellStyle, ...(cell.isCurrentMonth ? {} : S.calCellGray), cursor: cell.isCurrentMonth ? "pointer" : "default" }}
+                onClick={() => {
+                  if (!cell.dateStr || !cell.isCurrentMonth) return;
+                  if (dayPosts.length > 0) setOverflowDate(cell.dateStr);
+                  else if (isAdmin) onDayClick(cell.dateStr);
+                }}
+              >
+                <span style={{ ...S.calDayNum, fontSize: isSmall ? 11 : 12.5, width: isSmall ? 20 : 24, height: isSmall ? 20 : 24, ...(isToday ? S.calDayToday : {}) }}>{cell.day}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: isSmall ? 2 : 3 }}>
+                  {dayPosts.slice(0, CHIP_LIMIT).map(p => {
+                    const pc = getPlatformColor(p.platform);
+                    return (
+                      <div
+                        key={p.id}
+                        style={chipStyle}
+                        onClick={e => { e.stopPropagation(); onPostClick(p); }}
+                      >
+                        <span style={{ ...S.calDot, background: pc.dot }} />
+                        <span style={chipTitleStyle}>{p.title}</span>
+                        {showBadge && <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text, fontSize: isSmall ? 8.5 : 9.5 }}>{p.platform}</span>}
+                      </div>
+                    );
+                  })}
+                  {overflow > 0 && (
+                    <button
+                      style={{ fontSize: isSmall ? 9.5 : 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 2, background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+                      onClick={e => { e.stopPropagation(); setOverflowDate(cell.dateStr!); }}
                     >
-                      <span style={{ ...S.calDot, background: pc.dot }} />
-                      <span style={S.calChipTitle}>{p.title}</span>
-                      <span style={{ ...S.calChipPlatform, background: pc.bg, color: pc.text }}>{p.platform}</span>
-                    </div>
-                  );
-                })}
-                {overflow > 0 && (
-                  <button
-                    style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600, paddingLeft: 4, background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
-                    onClick={e => { e.stopPropagation(); setOverflowDate(cell.dateStr!); }}
-                  >
-                    +{overflow} more
-                  </button>
-                )}
+                      +{overflow} more
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {overflowDate && (
@@ -1020,13 +1048,15 @@ function MonthGrid({ year, month, posts, isAdmin, onDayClick, onPostClick }: {
 
 // ── Week View ─────────────────────────────────────────────────────────────────
 
-function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
-  year: number; month: number; posts: CalPost[]; isAdmin: boolean;
+function WeekGrid({ posts, isAdmin, windowWidth, onDayClick, onPostClick }: {
+  year: number; month: number; posts: CalPost[]; isAdmin: boolean; windowWidth: number;
   onDayClick: (date: string) => void; onPostClick: (p: CalPost) => void;
 }) {
   const todayStr = todayYmdEST();
   const weekStart = startOfWeekYmdEST();
   const [overflowDate, setOverflowDate] = useState<string | null>(null);
+
+  const isSmall = windowWidth < 1400;
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const dateStr = addDaysYmd(weekStart, i);
@@ -1040,7 +1070,8 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", width: "100%", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(120px,1fr))", width: "100%", minWidth: isSmall ? 700 : "100%", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
         {days.map(({ dateStr, label, dayNum }) => {
           const dayPosts = postsByDate[dateStr] ?? [];
           const isToday = dateStr === todayStr;
@@ -1048,7 +1079,7 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
           return (
             <div
               key={dateStr}
-              style={{ borderRight: "1px solid #f3f4f6", minHeight: 220, padding: "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
+              style={{ borderRight: "1px solid #f3f4f6", minHeight: isSmall ? 160 : 220, padding: isSmall ? "6px 5px" : "10px 8px", background: "#fff", display: "flex", flexDirection: "column", gap: 0 }}
             >
               {/* Day header */}
               <div
@@ -1089,6 +1120,7 @@ function WeekGrid({ posts, isAdmin, onDayClick, onPostClick }: {
           );
         })}
       </div>
+      </div>
 
       {overflowDate && (
         <DayPostsModal
@@ -1125,6 +1157,15 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const [flaggedPosts, setFlaggedPosts] = useState<FlaggedPost[]>([]);
   const [showFlagged, setShowFlagged] = useState(false);
   const confirm = useConfirm();
+
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1440
+  );
+  useEffect(() => {
+    function handleResize() { setWindowWidth(window.innerWidth); }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const platformStoreKey = `marketing-platforms-${orgId ?? "admin"}`;
 
@@ -1208,7 +1249,7 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
   const filtered = posts.filter(p => filterPlatform === "all" || p.platform === filterPlatform);
 
   return (
-    <div style={S.page}>
+      <div style={{ ...S.page, padding: windowWidth < 1400 ? "16px 14px" : "28px 32px" }}>
       {/* Page header */}
       <div style={S.pageHeader}>
         <div>
@@ -1277,10 +1318,10 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
       {/* Calendar */}
       {view === "month"
-        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
+        ? <MonthGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} windowWidth={windowWidth}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
             onPostClick={p => setSelectedPost(p)} />
-        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin}
+        : <WeekGrid year={year} month={month} posts={filtered} isAdmin={isAdmin} windowWidth={windowWidth}
             onDayClick={d => { setNewDate(d); setShowNew(true); }}
             onPostClick={p => setSelectedPost(p)} />
       }

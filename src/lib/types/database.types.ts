@@ -219,6 +219,7 @@ export type Database = {
       crm_contacts: {
         Row: {
           ai_memory: string | null
+          calendly_notes: string | null
           call_taken_by: string | null
           campaign: string | null
           comments: string | null
@@ -246,6 +247,7 @@ export type Database = {
         }
         Insert: {
           ai_memory?: string | null
+          calendly_notes?: string | null
           call_taken_by?: string | null
           campaign?: string | null
           comments?: string | null
@@ -273,6 +275,7 @@ export type Database = {
         }
         Update: {
           ai_memory?: string | null
+          calendly_notes?: string | null
           call_taken_by?: string | null
           campaign?: string | null
           comments?: string | null

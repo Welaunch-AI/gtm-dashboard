@@ -72,6 +72,7 @@ interface Contact {
   call_taken_by: string | null;
   comments: string | null;
   ai_memory: string | null;
+  calendly_notes: string | null;
   scheduled_label: string | null;
   last_activity_at: string | null;
   created_at: string;
@@ -121,21 +122,24 @@ function getDefaultCols(mode: CRMMode): ColDef[] {
   ];
   if (mode === "demo") {
     return [
-      { key: "contact_name",    label: "Name",              width: 140, visible: true },
-      { key: "scheduled_label", label: "Scheduled On",      width: 180, visible: true },
-      { key: "campaign",        label: "Campaign",          width: 160, visible: true },
-      { key: "demo_status",     label: "Status",            width: 120, visible: true },
-      { key: "call_taken_by",   label: "Call Taken By",     width: 120, visible: true },
-      { key: "comments",        label: "Comments",          width: 200, visible: true },
-      { key: "remarks",         label: "Remarks",           width: 160, visible: true },
-      { key: "ai_memory",       label: "AI Memory",         width: 180, visible: false },
-      { key: "status",          label: "Pipeline",          width: 120, visible: false },
-      { key: "phone",           label: "Phone",             width: 130, visible: false },
-      { key: "email",           label: "Email",             width: 180, visible: false },
-      { key: "lead_source",     label: "Lead source",       width: 130, visible: false },
-      { key: "tags",            label: "Tags",              width: 140, visible: false },
-      { key: "scheduled_at",    label: "Scheduled (ET)",    width: 150, visible: false },
-      { key: "last_activity_at",label: "Last activity",     width: 130, visible: false },
+      // Spreadsheet columns — visible by default
+      { key: "contact_name",    label: "Name",                    width: 140, visible: true },
+      { key: "scheduled_label", label: "Scheduled On",            width: 180, visible: true },
+      { key: "campaign",        label: "Campaign",                width: 160, visible: true },
+      { key: "demo_status",     label: "Status",                  width: 120, visible: true },
+      { key: "call_taken_by",   label: "Call Taken By",           width: 120, visible: true },
+      { key: "comments",        label: "Comments",                width: 180, visible: true },
+      { key: "remarks",         label: "Remarks",                 width: 160, visible: true },
+      { key: "ai_memory",       label: "AI Memory (Conversation)",width: 200, visible: true },
+      { key: "calendly_notes",  label: "Calendly Notes",          width: 200, visible: true },
+      // Extra columns — hidden by default, accessible via expand or column manager
+      { key: "status",          label: "Pipeline",                width: 120, visible: false },
+      { key: "phone",           label: "Phone",                   width: 130, visible: false },
+      { key: "email",           label: "Email",                   width: 180, visible: false },
+      { key: "lead_source",     label: "Lead source",             width: 130, visible: false },
+      { key: "tags",            label: "Tags",                    width: 140, visible: false },
+      { key: "scheduled_at",    label: "Scheduled (ET)",          width: 150, visible: false },
+      { key: "last_activity_at",label: "Last activity",           width: 130, visible: false },
     ];
   }
   return base;
@@ -191,7 +195,7 @@ function cellValue(contact: Contact, col: ColDef): React.ReactNode {
   if (col.key === "last_activity_at") return <span style={{ fontSize: 13, color: "#6b7280" }}>{fmtDate(contact.last_activity_at)}</span>;
   if (col.key === "scheduled_at") return <span style={{ fontSize: 13 }}>{fmtDateTime(contact.scheduled_at)}</span>;
   if (col.key === "scheduled_label") return <span style={{ fontSize: 13, whiteSpace: "pre-line" }}>{fmtScheduledLabel(contact.scheduled_label, contact.scheduled_at)}</span>;
-  if (col.key === "comments" || col.key === "remarks" || col.key === "ai_memory" || col.key === "campaign") {
+  if (col.key === "comments" || col.key === "remarks" || col.key === "ai_memory" || col.key === "calendly_notes" || col.key === "campaign") {
     const text = String(val ?? "");
     if (!text) return <span style={{ color: "#d1d5db", fontSize: 13 }}>{EMPTY_VALUE}</span>;
     return <span style={{ fontSize: 13, color: "#374151" }} title={text}>{text.length > 80 ? text.slice(0, 80) + "…" : text}</span>;
@@ -430,6 +434,7 @@ function ContactModal({
     campaign: contact?.campaign ?? "",
     call_taken_by: contact?.call_taken_by ?? "",
     ai_memory: contact?.ai_memory ?? "",
+    calendly_notes: contact?.calendly_notes ?? "",
     tagInput: "",
     tags: contact?.tags ?? [] as string[],
   });
@@ -471,6 +476,7 @@ function ContactModal({
       campaign: form.campaign.trim() || null,
       call_taken_by: form.call_taken_by.trim() || null,
       ai_memory: form.ai_memory.trim() || null,
+      calendly_notes: form.calendly_notes.trim() || null,
       custom_fields: customValues as Record<string, string | number | boolean | null>,
       updated_at: new Date().toISOString(),
     };
@@ -606,6 +612,15 @@ function ContactModal({
                   placeholder="AI conversation transcript…"
                 />
               </Field>
+              <Field label="Calendly Notes">
+                <textarea
+                  value={form.calendly_notes}
+                  onChange={(e) => set("calendly_notes", e.target.value)}
+                  rows={3}
+                  style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                  placeholder="Calendly intake form responses…"
+                />
+              </Field>
             </div>
           )}
 
@@ -655,16 +670,105 @@ function ContactDetail({
   onUpdated: (c: Contact) => void;
   onDelete: (id: string) => void;
 }) {
+  const statuses = mode === "demo" ? DEMO_STATUSES : CONTACT_STATUSES;
   const [contact, setContact] = useState(initial);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [posting, setPosting] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [promoting, setPromoting] = useState(false);
   const [promoteSuccess, setPromoteSuccess] = useState(false);
   const notesEndRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    company: contact.company ?? "",
+    contact_name: contact.contact_name ?? "",
+    phone: contact.phone ?? "",
+    email: contact.email ?? "",
+    status: contact.status ?? statuses[0],
+    lead_source: contact.lead_source ?? "Website",
+    industry: contact.industry ?? "",
+    deal_size: contact.deal_size ?? "",
+    scheduled_label: contact.scheduled_label ?? "",
+    scheduled_at: contact.scheduled_at ? contact.scheduled_at.slice(0, 16) : "",
+    demo_status: contact.demo_status ?? "",
+    campaign: contact.campaign ?? "",
+    call_taken_by: contact.call_taken_by ?? "",
+    comments: contact.comments ?? "",
+    remarks: contact.remarks ?? "",
+    ai_memory: contact.ai_memory ?? "",
+    calendly_notes: contact.calendly_notes ?? "",
+    tagInput: "",
+    tags: contact.tags ?? [] as string[],
+  });
+  const [editCustomValues, setEditCustomValues] = useState<Record<string, unknown>>(contact.custom_fields ?? {});
+
+  function setEF(k: string, v: string | string[]) { setEditForm(p => ({ ...p, [k]: v })); }
+
+  function startEdit() {
+    setEditForm({
+      company: contact.company ?? "",
+      contact_name: contact.contact_name ?? "",
+      phone: contact.phone ?? "",
+      email: contact.email ?? "",
+      status: contact.status ?? statuses[0],
+      lead_source: contact.lead_source ?? "Website",
+      industry: contact.industry ?? "",
+      deal_size: contact.deal_size ?? "",
+      scheduled_label: contact.scheduled_label ?? "",
+      scheduled_at: contact.scheduled_at ? contact.scheduled_at.slice(0, 16) : "",
+      demo_status: contact.demo_status ?? "",
+      campaign: contact.campaign ?? "",
+      call_taken_by: contact.call_taken_by ?? "",
+      comments: contact.comments ?? "",
+      remarks: contact.remarks ?? "",
+      ai_memory: contact.ai_memory ?? "",
+      calendly_notes: contact.calendly_notes ?? "",
+      tagInput: "",
+      tags: contact.tags ?? [],
+    });
+    setEditCustomValues(contact.custom_fields ?? {});
+    setSaveError("");
+    setEditMode(true);
+  }
+
+  async function handleSaveEdit() {
+    setSaving(true); setSaveError("");
+    const payload = {
+      company: editForm.company.trim() || null,
+      contact_name: editForm.contact_name.trim() || null,
+      phone: editForm.phone.trim() || null,
+      email: editForm.email.trim() || null,
+      status: editForm.status,
+      lead_source: editForm.lead_source,
+      tags: editForm.tags,
+      industry: editForm.industry.trim() || null,
+      deal_size: editForm.deal_size.trim() || null,
+      scheduled_label: editForm.scheduled_label.trim() || null,
+      scheduled_at: editForm.scheduled_at ? new Date(editForm.scheduled_at).toISOString() : null,
+      demo_status: editForm.demo_status || null,
+      campaign: editForm.campaign.trim() || null,
+      call_taken_by: editForm.call_taken_by.trim() || null,
+      comments: editForm.comments.trim() || null,
+      remarks: editForm.remarks.trim() || null,
+      ai_memory: editForm.ai_memory.trim() || null,
+      calendly_notes: editForm.calendly_notes.trim() || null,
+      custom_fields: editCustomValues as Record<string, string | number | boolean | null>,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await createClient().from("crm_contacts").update(payload).eq("id", contact.id).select().single();
+    setSaving(false);
+    if (error) { setSaveError(error.message); return; }
+    const updated = data as Contact;
+    setContact(updated);
+    onUpdated(updated);
+    setEditMode(false);
+  }
 
   useEffect(() => {
     createClient().from("crm_notes").select("*").eq("contact_id", contact.id)
@@ -682,7 +786,6 @@ function ContactDetail({
     }).select().single();
     setPosting(false);
     if (data) { setNotes((p) => [...p, data as Note]); setNewNote(""); }
-    // bump last_activity_at
     const updated = await createClient().from("crm_contacts")
       .update({ last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("id", contact.id).select().single();
@@ -709,8 +812,7 @@ function ContactDetail({
       destructive: false,
     }))) return;
     setPromoting(true);
-    const sb = createClient();
-    await sb.from("crm_contacts").insert({
+    await createClient().from("crm_contacts").insert({
       org_id: contact.org_id,
       record_type: "demo",
       company: contact.company,
@@ -733,130 +835,255 @@ function ContactDetail({
 
   const sc = STATUS_COLORS[contact.status ?? ""] ?? { bg: "#f3f4f6", color: "#6b7280" };
 
+  // Use a dedicated right-panel overlay (not the shared Ov) so the
+  // drawer is always flush-right and never centered like a modal.
+  const drawerOverlay: React.CSSProperties = {
+    position: "fixed", inset: 0,
+    background: "rgba(0,0,0,0.45)",
+    display: "flex", alignItems: "stretch", justifyContent: "flex-end",
+    zIndex: 1000, animation: "fadeIn 0.15s ease",
+  };
+
   return (
-    <>
-      {editing && (
-        <ContactModal
-          mode={mode} orgId={contact.org_id} userId={userId}
-          contact={contact}
-          customFieldDefs={customFieldDefs}
-          onClose={() => setEditing(false)}
-          onSaved={(c) => { setContact(c); onUpdated(c); setEditing(false); }}
-        />
-      )}
-      <div style={Ov} onClick={onClose}>
-        <div
-          style={{ ...Md, maxWidth: 580, maxHeight: "92vh", display: "flex", flexDirection: "column", marginLeft: "auto" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div style={{ ...MdHd, borderBottom: "1px solid #f3f4f6" }}>
-            <div style={{ flex: 1 }}>
-              <h2 style={{ ...MdTt, marginBottom: 4 }}>{contact.company || contact.contact_name || "Unknown"}</h2>
+    <div style={drawerOverlay} onClick={editMode ? undefined : onClose}>
+      <div
+        style={{ ...Md, width: 620, maxWidth: "95vw", maxHeight: "100vh", height: "100vh", display: "flex", flexDirection: "column", borderRadius: "14px 0 0 14px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ ...MdHd, borderBottom: "1px solid #f3f4f6" }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ ...MdTt, marginBottom: 4 }}>{contact.company || contact.contact_name || "Unknown"}</h2>
+            {!editMode && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color }}>{contact.status ?? EMPTY_VALUE}</span>
                 {contact.contact_name && <span style={{ fontSize: 13, color: "#6b7280" }}>{contact.contact_name}</span>}
                 {contact.email && <span style={{ fontSize: 13, color: "#2563eb" }}>{contact.email}</span>}
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {isAdmin && <button onClick={() => setEditing(true)} style={SmBtn}>Edit</button>}
-              {isAdmin && mode === "contacts" && (
-                <button
-                  onClick={handlePromoteToDemo}
-                  disabled={promoting}
-                  style={{
-                    ...SmBtn,
-                    color: promoteSuccess ? "#15803d" : "#6d28d9",
-                    borderColor: promoteSuccess ? "#bbf7d0" : "#ddd6fe",
-                    background: promoteSuccess ? "#f0fdf4" : "#fff",
-                    opacity: promoting ? 0.6 : 1,
-                    cursor: promoting ? "not-allowed" : "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {promoteSuccess ? "Promoted!" : promoting ? "Promoting..." : "Promote to Demo"}
-                </button>
-              )}
-              {isAdmin && <button onClick={handleDelete} style={{ ...SmBtn, color: "#dc2626", borderColor: "#fecaca" }}>Delete</button>}
-              <button onClick={onClose} style={ClBtn}><X /></button>
-            </div>
+            )}
+            {editMode && <span style={{ fontSize: 12, color: "#6366f1", fontWeight: 600 }}>Editing…</span>}
           </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {!editMode && isAdmin && (
+              <button onClick={startEdit} style={{ ...SmBtn, color: "#6366f1", borderColor: "#c7d2fe" }}>Edit</button>
+            )}
+            {!editMode && isAdmin && mode === "contacts" && (
+              <button
+                onClick={handlePromoteToDemo}
+                disabled={promoting}
+                style={{
+                  ...SmBtn,
+                  color: promoteSuccess ? "#15803d" : "#6d28d9",
+                  borderColor: promoteSuccess ? "#bbf7d0" : "#ddd6fe",
+                  background: promoteSuccess ? "#f0fdf4" : "#fff",
+                  opacity: promoting ? 0.6 : 1,
+                  cursor: promoting ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {promoteSuccess ? "Promoted!" : promoting ? "Promoting..." : "Promote to Demo"}
+              </button>
+            )}
+            {!editMode && isAdmin && (
+              <button onClick={handleDelete} style={{ ...SmBtn, color: "#dc2626", borderColor: "#fecaca" }}>Delete</button>
+            )}
+            {editMode && (
+              <>
+                <button onClick={() => setEditMode(false)} style={CcBtn}>Cancel</button>
+                <button onClick={handleSaveEdit} disabled={saving} style={{ ...CfBtn, opacity: saving ? 0.5 : 1 }}>
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              </>
+            )}
+            {!editMode && <button onClick={onClose} style={ClBtn}><X /></button>}
+          </div>
+        </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Fields grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
-              {([
-                ["Phone", contact.phone],
-                ["Email", contact.email],
-                ["Lead source", contact.lead_source],
-                ["Industry", contact.industry],
-                ["Deal size", contact.deal_size],
-                ["Last activity", fmtDate(contact.last_activity_at)],
-                ...(mode === "demo" ? [
-                  ["Scheduled On", fmtScheduledLabel(contact.scheduled_label, contact.scheduled_at)],
-                  ["Campaign", contact.campaign],
-                  ["Status", contact.demo_status],
-                  ["Call taken by", contact.call_taken_by],
-                ] : []),
-              ] as [string, string | null][]).map(([label, val]) => (
-                <div key={label}>
-                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{label}</p>
-                  <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>{val || EMPTY_VALUE}</p>
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* ── VIEW MODE ── */}
+          {!editMode && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
+                {([
+                  ["Phone", contact.phone],
+                  ["Email", contact.email],
+                  ["Lead source", contact.lead_source],
+                  ["Industry", contact.industry],
+                  ["Deal size", contact.deal_size],
+                  ["Last activity", fmtDate(contact.last_activity_at)],
+                  ...(mode === "demo" ? [
+                    ["Scheduled On", fmtScheduledLabel(contact.scheduled_label, contact.scheduled_at)],
+                    ["Campaign", contact.campaign],
+                    ["Status", contact.demo_status],
+                    ["Call taken by", contact.call_taken_by],
+                  ] : []),
+                ] as [string, string | null][]).map(([label, val]) => (
+                  <div key={label}>
+                    <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{label}</p>
+                    <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>{val || EMPTY_VALUE}</p>
+                  </div>
+                ))}
+              </div>
+
+              {contact.comments && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Comments</p>
+                  <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.comments}</p>
                 </div>
-              ))}
-            </div>
+              )}
+              {contact.remarks && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Remarks</p>
+                  <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.remarks}</p>
+                </div>
+              )}
+              {contact.ai_memory && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>AI Memory (Conversation)</p>
+                  <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line", maxHeight: 240, overflowY: "auto" }}>{contact.ai_memory}</p>
+                </div>
+              )}
+              {contact.calendly_notes && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Calendly Notes</p>
+                  <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line", maxHeight: 200, overflowY: "auto" }}>{contact.calendly_notes}</p>
+                </div>
+              )}
+              {contact.tags && contact.tags.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Tags</p>
+                  <TagChips tags={contact.tags} />
+                </div>
+              )}
+              {customFieldDefs.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Custom fields</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
+                    {customFieldDefs.sort((a, b) => a.position - b.position).map(def => {
+                      const val = contact.custom_fields?.[def.id];
+                      const display = def.field_type === "checkbox"
+                        ? (val ? "Yes" : "No")
+                        : (val !== undefined && val !== null && val !== "" ? String(val) : EMPTY_VALUE);
+                      return (
+                        <div key={def.id} style={def.field_type === "textarea" ? { gridColumn: "1 / -1" } : {}}>
+                          <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{def.name}</p>
+                          <p style={{ fontSize: 13, color: "#374151", margin: 0, whiteSpace: "pre-line" }}>{display}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
-            {contact.comments && (
-              <div>
-                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Comments</p>
-                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.comments}</p>
+          {/* ── EDIT MODE ── */}
+          {editMode && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={Grid2}>
+                <Field label="Company"><Inp value={editForm.company} onChange={v => setEF("company", v)} placeholder="Acme Inc." /></Field>
+                <Field label="Contact name"><Inp value={editForm.contact_name} onChange={v => setEF("contact_name", v)} placeholder="Jane Smith" /></Field>
+                <Field label="Phone"><Inp value={editForm.phone} onChange={v => setEF("phone", v)} placeholder="+1 555-0100" /></Field>
+                <Field label="Email"><Inp value={editForm.email} onChange={v => setEF("email", v)} placeholder="jane@acme.com" /></Field>
+                <Field label="Status">
+                  <select value={editForm.status} onChange={e => setEF("status", e.target.value)} style={Sel}>
+                    {statuses.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </Field>
+                <Field label="Lead source">
+                  <select value={editForm.lead_source} onChange={e => setEF("lead_source", e.target.value)} style={Sel}>
+                    {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </Field>
               </div>
-            )}
-
-            {contact.remarks && (
+              <Field label="Tags">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                  {editForm.tags.map(t => (
+                    <span key={t} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, fontSize: 12, background: "#f3f4f6", border: "1px solid #e5e7eb" }}>
+                      {t}
+                      <button onClick={() => setEF("tags", editForm.tags.filter(x => x !== t))} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input value={editForm.tagInput} onChange={e => setEF("tagInput", e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const t = editForm.tagInput.trim(); if (t && !editForm.tags.includes(t)) setEF("tags", [...editForm.tags, t]); setEF("tagInput", ""); }}}
+                    placeholder="Type tag + Enter" style={{ ...InpSt, flex: 1 }} />
+                  <button onClick={() => { const t = editForm.tagInput.trim(); if (t && !editForm.tags.includes(t)) setEF("tags", [...editForm.tags, t]); setEF("tagInput", ""); }} style={SmBtn}>Add</button>
+                </div>
+              </Field>
               <div>
-                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Remarks</p>
-                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line" }}>{contact.remarks}</p>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#9ca3af", textTransform: "uppercase", margin: "0 0 10px" }}>Qualification</p>
+                <div style={Grid2}>
+                  <Field label="Industry">
+                    <select value={editForm.industry} onChange={e => setEF("industry", e.target.value)} style={Sel}>
+                      <option value="">Select…</option>
+                      {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Deal size"><Inp value={editForm.deal_size} onChange={v => setEF("deal_size", v)} placeholder="e.g. $5,000" /></Field>
+                </div>
               </div>
-            )}
-
-            {contact.ai_memory && (
-              <div>
-                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>AI Memory</p>
-                <p style={{ fontSize: 13, color: "#374151", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", margin: 0, lineHeight: 1.6, whiteSpace: "pre-line", maxHeight: 240, overflowY: "auto" }}>{contact.ai_memory}</p>
-              </div>
-            )}
-
-            {contact.tags && contact.tags.length > 0 && (
-              <div>
-                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 6px" }}>Tags</p>
-                <TagChips tags={contact.tags} />
-              </div>
-            )}
-
-            {/* Custom fields */}
-            {customFieldDefs.length > 0 && (
-              <div>
-                <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Custom fields</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
-                  {customFieldDefs.sort((a, b) => a.position - b.position).map(def => {
-                    const val = contact.custom_fields?.[def.id];
-                    const display = def.field_type === "checkbox"
-                      ? (val ? "Yes" : "No")
-                      : (val !== undefined && val !== null && val !== "" ? String(val) : EMPTY_VALUE);
-                    return (
+              {mode === "demo" && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#9ca3af", textTransform: "uppercase", margin: "0 0 10px" }}>Demo</p>
+                  <div style={Grid2}>
+                    <Field label="Scheduled On">
+                      <textarea value={editForm.scheduled_label} onChange={e => setEF("scheduled_label", e.target.value)} rows={2}
+                        style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                        placeholder="Sunday, June 7, 9-9.30pm (EST)" />
+                    </Field>
+                    <Field label="Campaign"><Inp value={editForm.campaign} onChange={v => setEF("campaign", v)} placeholder="AI SMS Campaign" /></Field>
+                    <Field label="Status">
+                      <select value={editForm.demo_status} onChange={e => setEF("demo_status", e.target.value)} style={Sel}>
+                        <option value="">{EMPTY_VALUE}</option>
+                        {DEMO_CALL_STATUSES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Call taken by"><Inp value={editForm.call_taken_by} onChange={v => setEF("call_taken_by", v)} placeholder="Seth / Adam" /></Field>
+                    <Field label="Scheduled (ET)">
+                      <input type="datetime-local" value={editForm.scheduled_at} onChange={e => setEF("scheduled_at", e.target.value)} style={InpSt} />
+                    </Field>
+                  </div>
+                  <Field label="Comments">
+                    <textarea value={editForm.comments} onChange={e => setEF("comments", e.target.value)} rows={3}
+                      style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }} placeholder="Follow-up notes…" />
+                  </Field>
+                  <Field label="Remarks">
+                    <textarea value={editForm.remarks} onChange={e => setEF("remarks", e.target.value)} rows={2}
+                      style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }} placeholder="Additional remarks…" />
+                  </Field>
+                  <Field label="AI Memory (Conversation)">
+                    <textarea value={editForm.ai_memory} onChange={e => setEF("ai_memory", e.target.value)} rows={4}
+                      style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }} placeholder="AI conversation transcript…" />
+                  </Field>
+                  <Field label="Calendly Notes">
+                    <textarea value={editForm.calendly_notes} onChange={e => setEF("calendly_notes", e.target.value)} rows={3}
+                      style={{ ...InpSt, resize: "vertical", width: "100%", boxSizing: "border-box" }} placeholder="Calendly intake form responses…" />
+                  </Field>
+                </div>
+              )}
+              {customFieldDefs.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#9ca3af", textTransform: "uppercase", margin: "0 0 10px" }}>Custom fields</p>
+                  <div style={Grid2}>
+                    {customFieldDefs.sort((a, b) => a.position - b.position).map(def => (
                       <div key={def.id} style={def.field_type === "textarea" ? { gridColumn: "1 / -1" } : {}}>
-                        <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{def.name}</p>
-                        <p style={{ fontSize: 13, color: "#374151", margin: 0, whiteSpace: "pre-line" }}>{display}</p>
+                        <Field label={def.name}>
+                          <CustomFieldInput def={def} value={editCustomValues[def.id]}
+                            onChange={v => setEditCustomValues(p => ({ ...p, [def.id]: v }))} />
+                        </Field>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              {saveError && <p style={{ color: "#dc2626", fontSize: 12, margin: 0 }}>{saveError}</p>}
+            </div>
+          )}
 
-            {/* Activity / Notes */}
+          {/* Activity / Notes — always visible */}
+          {!editMode && (
             <div>
               <p style={{ fontSize: 13, fontWeight: 700, color: "#374151", margin: "0 0 12px" }}>Activity log</p>
               {loadingNotes ? (
@@ -886,7 +1113,6 @@ function ContactDetail({
                   <div ref={notesEndRef} />
                 </div>
               )}
-
               <div style={{ marginTop: 12 }}>
                 <textarea
                   value={newNote}
@@ -904,10 +1130,10 @@ function ContactDetail({
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1188,11 +1414,13 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
     ? "Every demo booking across all clients · the response CRM."
     : "Every contact across all clients · the response CRM.";
   const statuses = mode === "demo" ? DEMO_STATUSES : CONTACT_STATUSES;
+  const confirm = useConfirm();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "board">("list");
   const [cols, setCols] = useState<ColDef[]>(() => getDefaultCols(mode));
+  const [showAllCols, setShowAllCols] = useState(false);
   const [showColMgr, setShowColMgr] = useState(false);
   const [showCfMgr, setShowCfMgr] = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
@@ -1302,7 +1530,23 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
     setSelectedContact(null);
   }
 
-  const visibleCols = cols.filter((c) => c.visible);
+  async function handleBulkDelete() {
+    if (selectedRows.size === 0) return;
+    if (!(await confirm({
+      title: `Delete ${selectedRows.size} record${selectedRows.size !== 1 ? "s" : ""}`,
+      message: `Permanently delete ${selectedRows.size} selected record${selectedRows.size !== 1 ? "s" : ""}? This cannot be undone.`,
+      confirmLabel: "Delete all",
+      destructive: true,
+    }))) return;
+    const ids = [...selectedRows];
+    await createClient().from("crm_contacts").delete().in("id", ids);
+    setContacts((p) => p.filter((c) => !selectedRows.has(c.id)));
+    setSelectedRows(new Set());
+    if (selectedContact && selectedRows.has(selectedContact.id)) setSelectedContact(null);
+  }
+
+  // When showAllCols is true, all columns are visible; otherwise respect individual visibility
+  const visibleCols = showAllCols ? cols : cols.filter((c) => c.visible);
 
   return (
     <div style={{ padding: "24px 32px", minHeight: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
@@ -1326,6 +1570,14 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
               </button>
             ))}
           </div>
+          {/* Expand / collapse all columns */}
+          <button
+            onClick={() => setShowAllCols(p => !p)}
+            style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center", ...(showAllCols ? { background: "#f0fdf4", borderColor: "#86efac", color: "#15803d" } : {}) }}
+            title={showAllCols ? "Collapse to spreadsheet columns" : "Expand to show all columns"}
+          >
+            <ExpandIcon />{showAllCols ? "Collapse" : "Expand"}
+          </button>
           {/* Manage columns */}
           <div style={{ position: "relative" }} ref={colMgrRef}>
             <button onClick={() => setShowColMgr((p) => !p)} style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center" }}>
@@ -1388,7 +1640,16 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
         />
         <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: 4 }}>
           {filtered.length} contact{filtered.length !== 1 ? "s" : ""}
+          {selectedRows.size > 0 && <span style={{ marginLeft: 6, color: "#6366f1", fontWeight: 600 }}>{selectedRows.size} selected</span>}
         </span>
+        {selectedRows.size > 0 && (
+          <button
+            onClick={handleBulkDelete}
+            style={{ ...OutBtn, display: "flex", gap: 5, alignItems: "center", fontSize: 12, padding: "5px 10px", color: "#dc2626", borderColor: "#fecaca", background: "#fff5f5" }}
+          >
+            <TrashIcon />Delete selected ({selectedRows.size})
+          </button>
+        )}
         <div style={{ marginLeft: "auto" }}>
           <button
             onClick={() => setShowColMgr((p) => !p)}
@@ -1552,3 +1813,5 @@ function ColumnsIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" 
 function FieldsIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="14" x2="6" y2="20"/><line x1="18" y1="10" x2="18" y2="20"/></svg>; }
 function UploadIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function DownloadIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
+function TrashIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>; }
+function ExpandIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>; }
