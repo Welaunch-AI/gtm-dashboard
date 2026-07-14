@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { SkeletonCard, Skeleton } from "@/components/ui/Skeleton";
@@ -562,7 +562,7 @@ function AddCampaignModal({ channelType, orgId, channelId, onClose, onCreated }:
 
 // ── Channel Section ────────────────────────────────────────────────────────────
 
-function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceStats, onToggle, onCampaignAdded, onMetricsSaved, onCampaignDeleted }: {
+function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceStats, onToggle, onCampaignAdded, onMetricsSaved, onCampaignDeleted, isDragging }: {
   channel: Channel;
   campaigns: Campaign[];
   allMetrics: Metrics[];
@@ -573,6 +573,7 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
   onCampaignAdded: (c: Campaign) => void;
   onMetricsSaved: (m: Metrics) => void;
   onCampaignDeleted: (id: string) => void;
+  isDragging?: boolean;
 }) {
   const [enabledCampaignIds, setEnabledCampaignIds] = useState<Set<string>>(() => new Set());
   const [showAddCampaign, setShowAddCampaign] = useState(false);
@@ -635,6 +636,11 @@ function ChannelSection({ channel, campaigns, allMetrics, isAdmin, orgId, voiceS
         {/* Header */}
         <div style={S.channelHeader}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {isDragging && (
+              <span title="Drag to reorder" style={{ color: "#d1d5db", cursor: "grab", display: "flex", alignItems: "center", flexShrink: 0 }}>
+                <DragHandleIcon />
+              </span>
+            )}
             <div style={{ ...S.channelIconWrap, background: cfg.bg, color: cfg.color }}>{cfg.icon}</div>
             <span style={S.channelName}>{cfg.label}</span>
             {cfg.aiTag && <span style={S.aiBadge}>AI</span>}
@@ -759,6 +765,63 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null);
   const [demoAppointmentCount, setDemoAppointmentCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Drag-to-reorder state (admin only)
+  const orderKey = `dashboard-section-order-${orgId}`;
+  const [sectionOrder, setSectionOrder] = useState<ChannelType[]>(() => [...ALL_CHANNEL_TYPES]);
+  const dragSrc = useRef<ChannelType | null>(null);
+  const [dragOver, setDragOver] = useState<ChannelType | null>(null);
+
+  // Load saved order from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(orderKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ChannelType[];
+        // Merge: include any new channel types not in saved order
+        const merged = [
+          ...parsed.filter((t) => ALL_CHANNEL_TYPES.includes(t)),
+          ...ALL_CHANNEL_TYPES.filter((t) => !parsed.includes(t)),
+        ];
+        setSectionOrder(merged);
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
+
+  function persistOrder(next: ChannelType[]) {
+    setSectionOrder(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(orderKey, JSON.stringify(next));
+    }
+  }
+
+  function handleDragStart(type: ChannelType) {
+    dragSrc.current = type;
+  }
+
+  function handleDragOver(e: React.DragEvent, type: ChannelType) {
+    e.preventDefault();
+    if (dragSrc.current && dragSrc.current !== type) setDragOver(type);
+  }
+
+  function handleDrop(type: ChannelType) {
+    if (!dragSrc.current || dragSrc.current === type) return;
+    const next = [...sectionOrder];
+    const from = next.indexOf(dragSrc.current);
+    const to = next.indexOf(type);
+    next.splice(from, 1);
+    next.splice(to, 0, dragSrc.current);
+    persistOrder(next);
+    dragSrc.current = null;
+    setDragOver(null);
+  }
+
+  function handleDragEnd() {
+    dragSrc.current = null;
+    setDragOver(null);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -893,27 +956,43 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
         ))}
       </div>
 
-      {/* Channel sections — ordered */}
-      {ALL_CHANNEL_TYPES.map(type => {
+      {/* Channel sections — drag-to-reorder (admin) */}
+      {sectionOrder.map(type => {
         const channel = channels.find(c => c.channel_type === type);
         if (!channel) return null;
         if (!channel.enabled && !isAdmin) return null;
         const channelCampaigns = campaigns.filter(c => c.channel_id === channel.id);
         const channelMetrics = metrics.filter(m => channelCampaigns.some(c => c.id === m.campaign_id));
+        const isDraggingOver = dragOver === type;
         return (
-          <ChannelSection
+          <div
             key={channel.id}
-            channel={channel}
-            campaigns={channelCampaigns}
-            allMetrics={channelMetrics}
-            isAdmin={isAdmin}
-            orgId={orgId}
-            voiceStats={type === "ai_voice" ? voiceStats : null}
-            onToggle={enabled => handleToggle(channel.id, enabled)}
-            onCampaignAdded={handleCampaignAdded}
-            onMetricsSaved={handleMetricsSaved}
-            onCampaignDeleted={handleCampaignDeleted}
-          />
+            draggable={isAdmin}
+            onDragStart={() => handleDragStart(type)}
+            onDragOver={(e) => handleDragOver(e, type)}
+            onDrop={() => handleDrop(type)}
+            onDragEnd={handleDragEnd}
+            style={{
+              outline: isDraggingOver ? "2px dashed #6366f1" : "none",
+              borderRadius: 16,
+              transition: "outline 0.1s",
+              cursor: isAdmin ? "grab" : "default",
+            }}
+          >
+            <ChannelSection
+              channel={channel}
+              campaigns={channelCampaigns}
+              allMetrics={channelMetrics}
+              isAdmin={isAdmin}
+              orgId={orgId}
+              voiceStats={type === "ai_voice" ? voiceStats : null}
+              onToggle={enabled => handleToggle(channel.id, enabled)}
+              onCampaignAdded={handleCampaignAdded}
+              onMetricsSaved={handleMetricsSaved}
+              onCampaignDeleted={handleCampaignDeleted}
+              isDragging={isAdmin}
+            />
+          </div>
         );
       })}
 
@@ -980,6 +1059,7 @@ const S: Record<string, React.CSSProperties> = {
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
+function DragHandleIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>; }
 function EditIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function TrashIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>; }
 function XIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>; }
