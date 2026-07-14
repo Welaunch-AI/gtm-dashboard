@@ -1204,18 +1204,37 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
   const [error, setError] = useState("");
   const statuses = mode === "demo" ? DEMO_STATUSES : CONTACT_STATUSES;
 
-  const FIELDS = [
-    { key: "company", label: "Company" },
-    { key: "contact_name", label: "Contact name" },
-    { key: "phone", label: "Phone" },
-    { key: "email", label: "Email" },
-    { key: "status", label: "Status" },
-    { key: "lead_source", label: "Lead source" },
-    { key: "industry", label: "Industry" },
-    { key: "deal_size", label: "Deal size" },
-    { key: "remarks", label: "Remarks" },
-    { key: "tags", label: "Tags (comma-separated)" },
-  ];
+  const FIELDS = mode === "demo"
+    ? [
+        // The 9 default spreadsheet columns first
+        { key: "contact_name",    label: "Name" },
+        { key: "scheduled_label", label: "Scheduled On" },
+        { key: "campaign",        label: "Campaign" },
+        { key: "demo_status",     label: "Status" },
+        { key: "call_taken_by",   label: "Call Taken By" },
+        { key: "comments",        label: "Comments" },
+        { key: "remarks",         label: "Remarks" },
+        { key: "ai_memory",       label: "AI Memory (Conversation)" },
+        { key: "calendly_notes",  label: "Calendly Notes" },
+        // Optional extra fields
+        { key: "company",         label: "Company" },
+        { key: "phone",           label: "Phone" },
+        { key: "email",           label: "Email" },
+        { key: "lead_source",     label: "Lead source" },
+        { key: "tags",            label: "Tags (comma-separated)" },
+      ]
+    : [
+        { key: "company",      label: "Company" },
+        { key: "contact_name", label: "Contact name" },
+        { key: "phone",        label: "Phone" },
+        { key: "email",        label: "Email" },
+        { key: "status",       label: "Status" },
+        { key: "lead_source",  label: "Lead source" },
+        { key: "industry",     label: "Industry" },
+        { key: "deal_size",    label: "Deal size" },
+        { key: "remarks",      label: "Remarks" },
+        { key: "tags",         label: "Tags (comma-separated)" },
+      ];
 
   function parseCSV(text: string) {
     const lines = text.trim().split("\n");
@@ -1225,8 +1244,31 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
     setRows(rs);
     // Auto-map headers to fields
     const autoMap: Record<string, string> = {};
+    // Extra aliases for demo columns
+    const ALIASES: Record<string, string[]> = {
+      contact_name:    ["name", "contact name", "contact_name", "full name"],
+      scheduled_label: ["scheduled on", "scheduled_on", "scheduled date", "date"],
+      campaign:        ["campaign"],
+      demo_status:     ["status", "demo status", "demo_status"],
+      call_taken_by:   ["call taken by", "call_taken_by", "taken by", "agent"],
+      comments:        ["comments", "comment"],
+      remarks:         ["remarks", "remark", "notes"],
+      ai_memory:       ["ai memory (conversation)", "ai memory", "ai_memory", "conversation", "memory"],
+      calendly_notes:  ["calendly notes", "calendly_notes", "calendly"],
+      company:         ["company", "company name", "organization"],
+      phone:           ["phone", "phone number", "mobile"],
+      email:           ["email", "email address"],
+      lead_source:     ["lead source", "lead_source", "source"],
+      industry:        ["industry"],
+      deal_size:       ["deal size", "deal_size", "deal value"],
+      tags:            ["tags", "tag"],
+    };
     for (const f of FIELDS) {
-      const match = hdrs.find((h) => h.toLowerCase().replace(/\s/g, "_") === f.key || h.toLowerCase() === f.label.toLowerCase());
+      const aliases = ALIASES[f.key] ?? [f.key, f.label.toLowerCase()];
+      const match = hdrs.find((h) =>
+        aliases.includes(h.toLowerCase()) ||
+        h.toLowerCase().replace(/\s/g, "_") === f.key
+      );
       if (match) autoMap[f.key] = match;
     }
     setMapping(autoMap);
@@ -1258,9 +1300,12 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
           const val = row[idx]?.trim() ?? "";
           if (field === "tags") rec[field] = val ? val.split(",").map((t) => t.trim()) : [];
           else if (field === "status") rec[field] = statuses.includes(val) ? val : statuses[0];
+          else if (field === "demo_status") rec[field] = val || null;
           else rec[field] = val || null;
         }
       }
+      // Ensure demo records always have record_type set
+      if (mode === "demo") rec.record_type = "demo";
       return rec;
     }).filter((r) => r.company || r.contact_name || r.email);
 
@@ -1276,13 +1321,17 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
     <div style={Ov}>
       <div style={{ ...Md, maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={MdHd}>
-          <h2 style={MdTt}>Import contacts</h2>
+          <h2 style={MdTt}>{mode === "demo" ? "Import demo leads" : "Import contacts"}</h2>
           <button onClick={onClose} style={ClBtn}><X /></button>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
           {step === "upload" && (
             <>
-              <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>Upload a CSV file with headers. Duplicates are skipped based on email.</p>
+              <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>
+                {mode === "demo"
+                  ? "Upload a CSV or Excel-exported CSV file. Columns are auto-matched to: Name, Scheduled On, Campaign, Status, Call Taken By, Comments, Remarks, AI Memory, Calendly Notes."
+                  : "Upload a CSV file with headers. Duplicates are skipped based on email."}
+              </p>
               <input type="file" accept=".csv" onChange={handleFile} style={{ fontSize: 14 }} />
               {error && <p style={{ color: "#dc2626", fontSize: 12 }}>{error}</p>}
             </>
