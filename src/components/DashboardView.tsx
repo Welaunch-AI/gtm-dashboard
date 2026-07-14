@@ -906,6 +906,44 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
   const totalCampaigns = campaigns.length;
   const enabledCount = enabledChannels.length;
 
+  // Hero stat overrides (admin editable, persisted per org)
+  const heroOverrideKey = `dashboard-hero-${orgId}`;
+  type HeroOverride = { value: string; note: string };
+  const [heroOverrides, setHeroOverrides] = useState<Record<string, HeroOverride>>({});
+  const [editingHero, setEditingHero] = useState<string | null>(null);
+  const [heroEditDraft, setHeroEditDraft] = useState<HeroOverride>({ value: "", note: "" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(heroOverrideKey);
+      if (raw) setHeroOverrides(JSON.parse(raw));
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroOverrideKey]);
+
+  function openHeroEdit(label: string, defaultValue: string, defaultNote: string) {
+    const existing = heroOverrides[label];
+    setHeroEditDraft({ value: existing?.value ?? defaultValue, note: existing?.note ?? defaultNote });
+    setEditingHero(label);
+  }
+
+  function saveHeroEdit() {
+    if (!editingHero) return;
+    const next = { ...heroOverrides, [editingHero]: heroEditDraft };
+    setHeroOverrides(next);
+    if (typeof window !== "undefined") window.localStorage.setItem(heroOverrideKey, JSON.stringify(next));
+    setEditingHero(null);
+  }
+
+  function clearHeroOverride(label: string) {
+    const next = { ...heroOverrides };
+    delete next[label];
+    setHeroOverrides(next);
+    if (typeof window !== "undefined") window.localStorage.setItem(heroOverrideKey, JSON.stringify(next));
+    setEditingHero(null);
+  }
+
   if (loading) {
     return (
       <div style={{ padding: "32px 40px", maxWidth: 1200, margin: "0 auto" }}>
@@ -944,17 +982,76 @@ export default function DashboardView({ orgId, orgName, isAdmin }: Props) {
       {/* Hero stats */}
       <div style={S.heroRow}>
         {[
-          { label: "Meetings Booked", value: fmtNum(totalMeetings), note: `Across ${enabledCount} active channels` },
-          { label: "Campaigns Running", value: String(totalCampaigns), note: "Total across all channels" },
-          { label: "Active Channels", value: String(enabledCount), note: "Currently enabled" },
-        ].map(s => (
-          <div key={s.label} style={S.heroCard}>
-            <p style={S.heroLabel}>{s.label}</p>
-            <p style={S.heroValue}>{s.value}</p>
-            <p style={S.heroNote}>{s.note}</p>
-          </div>
-        ))}
+          { label: "Meetings Booked",   autoValue: fmtNum(totalMeetings),  autoNote: `Across ${enabledCount} active channels` },
+          { label: "Campaigns Running", autoValue: String(totalCampaigns), autoNote: "Total across all channels" },
+          { label: "Active Channels",   autoValue: String(enabledCount),   autoNote: "Currently enabled" },
+        ].map(s => {
+          const ov = heroOverrides[s.label];
+          const displayValue = ov?.value ?? s.autoValue;
+          const displayNote  = ov?.note  ?? s.autoNote;
+          const isOverridden = !!ov;
+          return (
+            <div key={s.label} style={{ ...S.heroCard, position: "relative" }}>
+              {isAdmin && (
+                <button
+                  onClick={() => openHeroEdit(s.label, s.autoValue, s.autoNote)}
+                  title="Edit this stat"
+                  style={{ position: "absolute", top: 10, right: 10, background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#9ca3af", fontWeight: 600 }}
+                >
+                  <EditIcon /> {isOverridden ? "Edited" : "Edit"}
+                </button>
+              )}
+              <p style={S.heroLabel}>{s.label}</p>
+              <p style={{ ...S.heroValue, color: isOverridden ? "#2563eb" : "#0f172a" }}>{displayValue}</p>
+              <p style={S.heroNote}>{displayNote}</p>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Hero edit modal */}
+      {editingHero && isAdmin && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={() => setEditingHero(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420, boxShadow: "0 24px 60px rgba(0,0,0,0.18)", overflow: "hidden" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>Edit — {editingHero}</span>
+              <button onClick={() => setEditingHero(null)} style={S.closeBtn}><XIcon /></button>
+            </div>
+            <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.4px" }}>Value</span>
+                <input
+                  autoFocus
+                  value={heroEditDraft.value}
+                  onChange={e => setHeroEditDraft(d => ({ ...d, value: e.target.value }))}
+                  onKeyDown={e => e.key === "Enter" && saveHeroEdit()}
+                  style={S.input}
+                  placeholder="e.g. 956"
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.4px" }}>Note / subtitle</span>
+                <input
+                  value={heroEditDraft.note}
+                  onChange={e => setHeroEditDraft(d => ({ ...d, note: e.target.value }))}
+                  onKeyDown={e => e.key === "Enter" && saveHeroEdit()}
+                  style={S.input}
+                  placeholder="e.g. Across 4 active channels"
+                />
+              </div>
+            </div>
+            <div style={{ padding: "12px 22px", borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button onClick={() => clearHeroOverride(editingHero)} style={{ ...S.cancelBtn, color: "#dc2626", borderColor: "#fecaca", fontSize: 12 }}>Reset to auto</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setEditingHero(null)} style={S.cancelBtn}>Cancel</button>
+                <button onClick={saveHeroEdit} style={S.primaryBtn}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Channel sections — drag-to-reorder (admin) */}
       {sectionOrder.map(type => {
