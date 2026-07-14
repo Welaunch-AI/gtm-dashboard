@@ -456,7 +456,8 @@ function ContactModal({
   async function handleSave() {
     setSaving(true); setError("");
     const supabase = createClient();
-    const payload = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const basePayload: any = {
       org_id: orgId,
       record_type: mode === "demo" ? "demo" : "contact",
       company: form.company.trim() || null,
@@ -476,15 +477,23 @@ function ContactModal({
       campaign: form.campaign.trim() || null,
       call_taken_by: form.call_taken_by.trim() || null,
       ai_memory: form.ai_memory.trim() || null,
-      calendly_notes: form.calendly_notes.trim() || null,
       custom_fields: customValues as Record<string, string | number | boolean | null>,
       updated_at: new Date().toISOString(),
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payloadWithNotes: any = { ...basePayload, calendly_notes: form.calendly_notes.trim() || null };
+
     let result;
     if (contact) {
-      result = await supabase.from("crm_contacts").update(payload).eq("id", contact.id).select().single();
+      result = await supabase.from("crm_contacts").update(payloadWithNotes).eq("id", contact.id).select().single();
+      if (result.error && (result.error.message.includes("calendly_notes") || result.error.code === "42703")) {
+        result = await supabase.from("crm_contacts").update(basePayload).eq("id", contact.id).select().single();
+      }
     } else {
-      result = await supabase.from("crm_contacts").insert({ ...payload, created_by: userId }).select().single();
+      result = await supabase.from("crm_contacts").insert({ ...payloadWithNotes, created_by: userId }).select().single();
+      if (result.error && (result.error.message.includes("calendly_notes") || result.error.code === "42703")) {
+        result = await supabase.from("crm_contacts").insert({ ...basePayload, created_by: userId }).select().single();
+      }
     }
     setSaving(false);
     if (result.error) { setError(result.error.message); return; }
@@ -739,7 +748,10 @@ function ContactDetail({
 
   async function handleSaveEdit() {
     setSaving(true); setSaveError("");
-    const payload = {
+    // Build payload without calendly_notes first; add it only if the column exists
+    // (migration may not have run yet — avoids silent save failures)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const basePayload: any = {
       company: editForm.company.trim() || null,
       contact_name: editForm.contact_name.trim() || null,
       phone: editForm.phone.trim() || null,
@@ -757,14 +769,25 @@ function ContactDetail({
       comments: editForm.comments.trim() || null,
       remarks: editForm.remarks.trim() || null,
       ai_memory: editForm.ai_memory.trim() || null,
-      calendly_notes: editForm.calendly_notes.trim() || null,
       custom_fields: editCustomValues as Record<string, string | number | boolean | null>,
       updated_at: new Date().toISOString(),
     };
-    const { data, error } = await createClient().from("crm_contacts").update(payload).eq("id", contact.id).select().single();
+
+    const sb = createClient();
+
+    // Try with calendly_notes first
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payloadWithNotes: any = { ...basePayload, calendly_notes: editForm.calendly_notes.trim() || null };
+    let result = await sb.from("crm_contacts").update(payloadWithNotes).eq("id", contact.id).select().single();
+
+    // If calendly_notes column doesn't exist yet, retry without it
+    if (result.error && (result.error.message.includes("calendly_notes") || result.error.code === "PGRST204" || result.error.code === "42703")) {
+      result = await sb.from("crm_contacts").update(basePayload).eq("id", contact.id).select().single();
+    }
+
     setSaving(false);
-    if (error) { setSaveError(error.message); return; }
-    const updated = data as Contact;
+    if (result.error) { setSaveError(result.error.message); return; }
+    const updated = result.data as Contact;
     setContact(updated);
     onUpdated(updated);
     setEditMode(false);
@@ -898,6 +921,12 @@ function ContactDetail({
             {!editMode && <button onClick={onClose} style={ClBtn}><X /></button>}
           </div>
         </div>
+
+        {saveError && (
+          <div style={{ padding: "10px 24px", background: "#fee2e2", borderBottom: "1px solid #fecaca", flexShrink: 0 }}>
+            <p style={{ fontSize: 12, color: "#dc2626", margin: 0, fontWeight: 500 }}>⚠ Save failed: {saveError}</p>
+          </div>
+        )}
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
           {/* ── VIEW MODE ── */}
