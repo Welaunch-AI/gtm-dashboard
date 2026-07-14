@@ -535,6 +535,82 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
 
 // ── Post Detail Modal ─────────────────────────────────────────────────────────
 
+function CaptionField({ value, onChange, onBlur, isAdmin }: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+  isAdmin: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <div style={S.fieldGroup}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <span style={S.fieldLabel}>Caption</span>
+          <button
+            onClick={() => setExpanded(true)}
+            title="Expand caption"
+            style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#6b7280", fontWeight: 600 }}
+          >
+            <ExpandCaptionIcon /> Expand
+          </button>
+        </div>
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onBlur={onBlur}
+          style={{ ...S.input, minHeight: 160, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit", fontSize: 13.5 }}
+          placeholder="Write the caption…"
+          readOnly={!isAdmin}
+        />
+      </div>
+
+      {/* Expanded caption overlay */}
+      {expanded && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          onClick={() => setExpanded(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 780, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.2)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid #f3f4f6" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Caption</span>
+              <button onClick={() => setExpanded(false)} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
+                Done
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              value={value}
+              onChange={e => onChange(e.target.value)}
+              onBlur={onBlur}
+              style={{ flex: 1, border: "none", outline: "none", padding: "20px 24px", fontSize: 15, lineHeight: 1.7, color: "#111827", fontFamily: "inherit", resize: "none", borderRadius: "0 0 16px 16px", minHeight: 400 }}
+              placeholder="Write the caption…"
+              readOnly={!isAdmin}
+            />
+            <div style={{ padding: "10px 22px", borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "#9ca3af", alignSelf: "center" }}>{value.length} characters</span>
+              {isAdmin && (
+                <button onClick={() => setExpanded(false)} style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  Save & Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExpandCaptionIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+      <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+    </svg>
+  );
+}
+
 function PostDetailModal({ post, isAdmin, authorName, platforms, onClose, onUpdated, onDeleted }: {
   post: CalPost; isAdmin: boolean; authorName: string; platforms: string[];
   onClose: () => void; onUpdated: (p: CalPost) => void; onDeleted: (id: string) => void;
@@ -617,17 +693,12 @@ function PostDetailModal({ post, isAdmin, authorName, platforms, onClose, onUpda
 
       <div style={{ ...S.modalBody, gap: 18 }}>
         {/* Caption */}
-        <div style={S.fieldGroup}>
-          <span style={S.fieldLabel}>Caption</span>
-          <textarea
-            value={caption}
-            onChange={e => setCaption(e.target.value)}
-            onBlur={() => caption !== (post.caption ?? "") && save({ caption: caption || null })}
-            style={{ ...S.input, minHeight: 100, resize: "vertical" }}
-            placeholder="Write the caption…"
-            readOnly={!isAdmin}
-          />
-        </div>
+        <CaptionField
+          value={caption}
+          onChange={setCaption}
+          onBlur={() => caption !== (post.caption ?? "") && save({ caption: caption || null })}
+          isAdmin={isAdmin}
+        />
 
         {/* Platform + Date row */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
