@@ -1179,27 +1179,40 @@ export default function MarketingPage({ orgId, isAdmin, authorName }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Load saved platforms from localStorage once on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = window.localStorage.getItem(platformStoreKey);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as string[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setPlatforms(parsed);
-      }
-    } catch {
-      // Ignore malformed saved data.
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPlatforms(parsed);
+          return;
+        }
+      } catch { /* ignore */ }
     }
+    // No saved list — seed with defaults
+    setPlatforms(DEFAULT_PLATFORMS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platformStoreKey]);
 
+  // When posts load, add any platform names found in posts that aren't already listed,
+  // but do NOT re-add platforms the user explicitly removed.
   useEffect(() => {
-    const fromPosts = posts.map((p) => p.platform).filter(Boolean);
-    const merged = Array.from(new Set([...DEFAULT_PLATFORMS, ...fromPosts, ...platforms])).sort();
-    if (merged.join("|") !== platforms.join("|")) {
-      setPlatforms(merged);
-    }
-  }, [posts, platforms]);
+    if (posts.length === 0) return;
+    setPlatforms((prev) => {
+      const fromPosts = posts.map((p) => p.platform).filter(Boolean);
+      const extra = fromPosts.filter((p) => !prev.includes(p));
+      if (extra.length === 0) return prev;
+      const next = Array.from(new Set([...prev, ...extra])).sort();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(platformStoreKey, JSON.stringify(next));
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts]);
 
   function persistPlatforms(next: string[]) {
     setPlatforms(next);
