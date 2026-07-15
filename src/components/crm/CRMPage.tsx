@@ -1193,15 +1193,67 @@ function ColumnManager({ cols, onChange, onClose }: {
 
 // ─── Import Modal ─────────────────────────────────────────────────────────────
 
+/**
+ * Proper RFC-4180 CSV parser.
+ * Handles quoted fields (may contain commas and newlines), escaped double-quotes,
+ * and Windows-style \r\n line endings.
+ */
+function parseCSVText(text: string): string[][] {
+  // Normalize line endings
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const results: string[][] = [];
+  let row: string[] = [];
+  let cur = "";
+  let inQuote = false;
+
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (normalized[i + 1] === '"') {
+          // Escaped quote: "" → "
+          cur += '"';
+          i++;
+        } else {
+          inQuote = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuote = true;
+      } else if (ch === ',') {
+        row.push(cur.trim());
+        cur = "";
+      } else if (ch === "\n") {
+        row.push(cur.trim());
+        cur = "";
+        // Skip fully-blank rows
+        if (row.some((c) => c !== "")) results.push(row);
+        row = [];
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  // Last field / row
+  row.push(cur.trim());
+  if (row.some((c) => c !== "")) results.push(row);
+
+  return results;
+}
+
 function ImportModal({ mode, orgId, userId, onClose, onImported }: {
   mode: CRMMode; orgId: string | null; userId: string;
   onClose: () => void; onImported: (contacts: Contact[]) => void;
 }) {
-  const [step, setStep] = useState<"upload" | "map" | "importing">("upload");
+  const [step, setStep] = useState<"upload" | "map" | "importing" | "done">("upload");
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [importedCount, setImportedCount] = useState(0);
   const statuses = mode === "demo" ? DEMO_STATUSES : CONTACT_STATUSES;
 
   const FIELDS = mode === "demo"
@@ -1236,38 +1288,41 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
         { key: "tags",         label: "Tags (comma-separated)" },
       ];
 
-  function parseCSV(text: string) {
-    const lines = text.trim().split("\n");
-    const hdrs = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-    const rs = lines.slice(1).map((l) => l.split(",").map((v) => v.trim().replace(/^"|"$/g, "")));
+  // Column name aliases for auto-mapping
+  const ALIASES: Record<string, string[]> = {
+    contact_name:    ["name", "contact name", "contact_name", "full name"],
+    scheduled_label: ["scheduled on", "scheduled_on", "scheduled date", "date"],
+    campaign:        ["campaign"],
+    demo_status:     ["status", "demo status", "demo_status"],
+    call_taken_by:   ["call taken by", "call_taken_by", "taken by", "agent"],
+    comments:        ["comments", "comment"],
+    remarks:         ["remarks", "remark", "notes"],
+    ai_memory:       ["ai memory (conversation)", "ai memory", "ai_memory", "conversation", "memory"],
+    calendly_notes:  ["calendly notes", "calendly_notes", "calendly"],
+    company:         ["company", "company name", "organization"],
+    phone:           ["phone", "phone number", "mobile"],
+    email:           ["email", "email address"],
+    lead_source:     ["lead source", "lead_source", "source"],
+    industry:        ["industry"],
+    deal_size:       ["deal size", "deal_size", "deal value"],
+    tags:            ["tags", "tag"],
+  };
+
+  function parseCsvAndMap(text: string) {
+    const allRows = parseCSVText(text);
+    if (allRows.length < 2) throw new Error("CSV must have a header row and at least one data row.");
+    const hdrs = allRows[0];
+    const dataRows = allRows.slice(1);
     setHeaders(hdrs);
-    setRows(rs);
-    // Auto-map headers to fields
+    setRows(dataRows);
+
+    // Auto-map headers → fields
     const autoMap: Record<string, string> = {};
-    // Extra aliases for demo columns
-    const ALIASES: Record<string, string[]> = {
-      contact_name:    ["name", "contact name", "contact_name", "full name"],
-      scheduled_label: ["scheduled on", "scheduled_on", "scheduled date", "date"],
-      campaign:        ["campaign"],
-      demo_status:     ["status", "demo status", "demo_status"],
-      call_taken_by:   ["call taken by", "call_taken_by", "taken by", "agent"],
-      comments:        ["comments", "comment"],
-      remarks:         ["remarks", "remark", "notes"],
-      ai_memory:       ["ai memory (conversation)", "ai memory", "ai_memory", "conversation", "memory"],
-      calendly_notes:  ["calendly notes", "calendly_notes", "calendly"],
-      company:         ["company", "company name", "organization"],
-      phone:           ["phone", "phone number", "mobile"],
-      email:           ["email", "email address"],
-      lead_source:     ["lead source", "lead_source", "source"],
-      industry:        ["industry"],
-      deal_size:       ["deal size", "deal_size", "deal value"],
-      tags:            ["tags", "tag"],
-    };
     for (const f of FIELDS) {
       const aliases = ALIASES[f.key] ?? [f.key, f.label.toLowerCase()];
       const match = hdrs.find((h) =>
         aliases.includes(h.toLowerCase()) ||
-        h.toLowerCase().replace(/\s/g, "_") === f.key
+        h.toLowerCase().replace(/[\s-]/g, "_") === f.key
       );
       if (match) autoMap[f.key] = match;
     }
@@ -1278,90 +1333,186 @@ function ImportModal({ mode, orgId, userId, onClose, onImported }: {
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setError("");
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try { parseCSV(ev.target?.result as string); }
-      catch { setError("Could not parse CSV. Make sure it has a header row."); }
+      try { parseCsvAndMap(ev.target?.result as string); }
+      catch (err) { setError(err instanceof Error ? err.message : "Could not parse CSV. Make sure it has a header row."); }
     };
     reader.readAsText(file);
   }
 
   async function handleImport() {
     setStep("importing");
+    setError("");
     const supabase = createClient();
-    const records = rows.map((row) => {
-      const rec: Record<string, unknown> = {
-        org_id: orgId, record_type: mode === "demo" ? "demo" : "contact",
-        created_by: userId, updated_at: new Date().toISOString(),
-      };
-      for (const [field, col] of Object.entries(mapping)) {
-        const idx = headers.indexOf(col);
-        if (idx >= 0) {
-          const val = row[idx]?.trim() ?? "";
-          if (field === "tags") rec[field] = val ? val.split(",").map((t) => t.trim()) : [];
-          else if (field === "status") rec[field] = statuses.includes(val) ? val : statuses[0];
-          else if (field === "demo_status") rec[field] = val || null;
-          else rec[field] = val || null;
-        }
-      }
-      // Ensure demo records always have record_type set
-      if (mode === "demo") rec.record_type = "demo";
-      return rec;
-    }).filter((r) => r.company || r.contact_name || r.email);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error: err } = await supabase
-      .from("crm_contacts").insert(records as any).select();
-    if (err) { setError(err.message); setStep("map"); return; }
-    onImported((data as Contact[]) ?? []);
-    onClose();
+    const records = rows
+      .map((row) => {
+        const rec: Record<string, unknown> = {
+          org_id: orgId,
+          record_type: mode === "demo" ? "demo" : "contact",
+          created_by: userId,
+          updated_at: new Date().toISOString(),
+        };
+        for (const [field, col] of Object.entries(mapping)) {
+          if (!col) continue; // skip unmapped fields
+          const idx = headers.indexOf(col);
+          if (idx < 0) continue;
+          const val = (row[idx] ?? "").trim();
+          if (field === "tags") {
+            rec[field] = val ? val.split(";").map((t) => t.trim()).filter(Boolean) : [];
+          } else if (field === "status") {
+            rec[field] = statuses.includes(val) ? val : (val || null);
+          } else if (field === "demo_status") {
+            rec[field] = val || null;
+          } else {
+            rec[field] = val || null;
+          }
+        }
+        if (mode === "demo") rec.record_type = "demo";
+        return rec;
+      })
+      // Accept any row that has at least one real value beyond the base fields
+      .filter((r) => {
+        const meaningful = Object.entries(r).filter(
+          ([k]) => !["org_id", "record_type", "created_by", "updated_at"].includes(k)
+        );
+        return meaningful.some(([, v]) => v !== null && v !== "" && !(Array.isArray(v) && v.length === 0));
+      });
+
+    if (records.length === 0) {
+      setError("No valid rows found. Check that your column mapping is correct and the file is not empty.");
+      setStep("map");
+      return;
+    }
+
+    // Insert in batches of 100 to avoid payload limits
+    const BATCH = 100;
+    const allInserted: Contact[] = [];
+    let insertError = "";
+
+    for (let i = 0; i < records.length; i += BATCH) {
+      const batch = records.slice(i, i + BATCH);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error: err } = await supabase.from("crm_contacts").insert(batch as any).select();
+      if (err) { insertError = err.message; break; }
+      allInserted.push(...((data as Contact[]) ?? []));
+    }
+
+    if (insertError) {
+      // Try without calendly_notes if that column doesn't exist yet
+      if (insertError.includes("calendly_notes") || insertError.includes("42703")) {
+        const stripped = records.map((r) => { const { calendly_notes: _, ...rest } = r as Record<string, unknown> & { calendly_notes?: unknown }; return rest; });
+        for (let i = 0; i < stripped.length; i += BATCH) {
+          const batch = stripped.slice(i, i + BATCH);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data, error: err2 } = await supabase.from("crm_contacts").insert(batch as any).select();
+          if (err2) { setError(err2.message); setStep("map"); return; }
+          allInserted.push(...((data as Contact[]) ?? []));
+        }
+      } else {
+        setError(insertError);
+        setStep("map");
+        return;
+      }
+    }
+
+    setImportedCount(allInserted.length);
+    onImported(allInserted);
+    setStep("done");
   }
 
   return (
     <div style={Ov}>
-      <div style={{ ...Md, maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ ...Md, maxWidth: 580, maxHeight: "88vh", display: "flex", flexDirection: "column" }}>
         <div style={MdHd}>
           <h2 style={MdTt}>{mode === "demo" ? "Import demo leads" : "Import contacts"}</h2>
           <button onClick={onClose} style={ClBtn}><X /></button>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* ── Step 1: Upload ── */}
           {step === "upload" && (
             <>
               <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>
                 {mode === "demo"
-                  ? "Upload a CSV or Excel-exported CSV file. Columns are auto-matched to: Name, Scheduled On, Campaign, Status, Call Taken By, Comments, Remarks, AI Memory, Calendly Notes."
-                  : "Upload a CSV file with headers. Duplicates are skipped based on email."}
+                  ? "Upload a CSV file. Columns are auto-matched to: Name, Scheduled On, Campaign, Status, Call Taken By, Comments, Remarks, AI Memory, Calendly Notes."
+                  : "Upload a CSV file with headers. Columns are auto-matched to the contact fields."}
               </p>
-              <input type="file" accept=".csv" onChange={handleFile} style={{ fontSize: 14 }} />
-              {error && <p style={{ color: "#dc2626", fontSize: 12 }}>{error}</p>}
+              <div style={{ border: "2px dashed #e5e7eb", borderRadius: 10, padding: "24px 20px", textAlign: "center" }}>
+                <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 12px" }}>Select a .csv file to upload</p>
+                <input type="file" accept=".csv,.txt" onChange={handleFile} style={{ fontSize: 14 }} />
+              </div>
+              {error && (
+                <div style={{ background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px" }}>
+                  <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>⚠ {error}</p>
+                </div>
+              )}
             </>
           )}
+
+          {/* ── Step 2: Map columns ── */}
           {step === "map" && (
             <>
-              <p style={{ fontSize: 14, color: "#374151", margin: 0 }}>Map your CSV columns to fields. <strong>{rows.length}</strong> rows found.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {FIELDS.map((f) => (
-                  <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 13, color: "#374151", minWidth: 160, fontWeight: 500 }}>{f.label}</span>
-                    <select
-                      value={mapping[f.key] ?? ""}
-                      onChange={(e) => setMapping((p) => ({ ...p, [f.key]: e.target.value }))}
-                      style={{ ...Sel, flex: 1 }}
-                    >
-                      <option value="">- skip -</option>
-                      {headers.map((h) => <option key={h}>{h}</option>)}
-                    </select>
-                  </div>
-                ))}
+              <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "10px 14px" }}>
+                <p style={{ fontSize: 13, color: "#15803d", margin: 0, fontWeight: 600 }}>
+                  {rows.length} data rows found — review column mapping below, then click Import.
+                </p>
               </div>
-              {error && <p style={{ color: "#dc2626", fontSize: 12 }}>{error}</p>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {FIELDS.map((f) => {
+                  const mapped = mapping[f.key];
+                  return (
+                    <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
+                      <span style={{ fontSize: 13, color: mapped ? "#111827" : "#9ca3af", minWidth: 180, fontWeight: mapped ? 600 : 400 }}>
+                        {f.label}
+                        {mapped && <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginLeft: 6, background: "#dcfce7", padding: "1px 6px", borderRadius: 10 }}>✓ Auto</span>}
+                      </span>
+                      <select
+                        value={mapping[f.key] ?? ""}
+                        onChange={(e) => setMapping((p) => ({ ...p, [f.key]: e.target.value }))}
+                        style={{ ...Sel, flex: 1, borderColor: mapped ? "#86efac" : "#e5e7eb" }}
+                      >
+                        <option value="">— skip —</option>
+                        {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+              {error && (
+                <div style={{ background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px" }}>
+                  <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>⚠ {error}</p>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button onClick={() => setStep("upload")} style={CcBtn}>Back</button>
-                <button onClick={handleImport} style={CfBtn}>Import {rows.length} rows</button>
+                <button onClick={() => { setStep("upload"); setError(""); }} style={CcBtn}>Back</button>
+                <button onClick={handleImport} style={CfBtn}>Import {rows.length} rows →</button>
               </div>
             </>
           )}
-          {step === "importing" && <p style={{ fontSize: 14, color: "#6b7280" }}>Importing…</p>}
+
+          {/* ── Step 3: Importing ── */}
+          {step === "importing" && (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ fontSize: 15, color: "#6b7280", fontWeight: 500 }}>Importing {rows.length} rows…</p>
+              <p style={{ fontSize: 13, color: "#9ca3af" }}>Please wait, do not close this window.</p>
+            </div>
+          )}
+
+          {/* ── Step 4: Done ── */}
+          {step === "done" && (
+            <div style={{ textAlign: "center", padding: "32px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>✓</div>
+              <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>Import complete!</p>
+              <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>
+                Successfully imported <strong>{importedCount}</strong> record{importedCount !== 1 ? "s" : ""}.
+              </p>
+              <button onClick={onClose} style={{ ...CfBtn, marginTop: 8 }}>Done</button>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
@@ -1616,11 +1767,24 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
       confirmLabel: "Delete all",
       destructive: true,
     }))) return;
+
     const ids = [...selectedRows];
-    await createClient().from("crm_contacts").delete().in("id", ids);
-    setContacts((p) => p.filter((c) => !selectedRows.has(c.id)));
-    setSelectedRows(new Set());
+    const { error: delErr } = await createClient()
+      .from("crm_contacts")
+      .delete()
+      .in("id", ids);
+
+    if (delErr) {
+      alert(`Delete failed: ${delErr.message}\nPlease try again.`);
+      return;
+    }
+
+    // Only update local state after confirmed DB delete
     if (selectedContact && selectedRows.has(selectedContact.id)) setSelectedContact(null);
+    setSelectedRows(new Set());
+    // Refetch from DB to guarantee local state matches server
+    hasFetched.current = false;
+    await fetchContacts();
   }
 
   // When showAllCols is true, all columns are visible; otherwise respect individual visibility
@@ -1830,7 +1994,7 @@ export default function CRMPage({ mode, orgId, isAdmin, userName, userRole, user
         <ImportModal
           mode={mode} orgId={orgId} userId={userId}
           onClose={() => setShowImport(false)}
-          onImported={(imported) => setContacts((p) => [...imported, ...p])}
+          onImported={() => { hasFetched.current = false; fetchContacts(); }}
         />
       )}
       {selectedContact && (
