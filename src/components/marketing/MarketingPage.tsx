@@ -442,7 +442,8 @@ function PostMediaPanel({ postId, isAdmin }: { postId: string; isAdmin: boolean 
         setError(`"${file.name}" exceeds ${isVideo ? "10 MB video" : "5 MB image"} limit, skipped.`);
         continue;
       }
-      const path = `posts/${postId}/${Date.now()}_${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `posts/${postId}/${Date.now()}_${safeName}`;
       const { data: up, error: upErr } = await sb.storage.from("cal-media").upload(path, file);
       if (upErr) { setError(upErr.message); continue; }
       const { data: { publicUrl } } = sb.storage.from("cal-media").getPublicUrl(up.path);
@@ -885,7 +886,8 @@ function AssetDrop({ orgId, isAdmin }: { orgId: string | null; isAdmin: boolean 
     setUploading(true);
     const sb = createClient();
     for (const file of Array.from(files)) {
-      const path = `${orgId ?? "admin"}/${Date.now()}_${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${orgId ?? "admin"}/${Date.now()}_${safeName}`;
       const { data: up, error } = await sb.storage.from("cal-media").upload(path, file);
       if (error) continue;
       const { data: { publicUrl } } = sb.storage.from("cal-media").getPublicUrl(up.path);
